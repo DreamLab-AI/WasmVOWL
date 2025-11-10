@@ -1,340 +1,66 @@
-# WebVOWL Modern
+# WasmVOWL
 
-> High-performance ontology visualization with React Three Fiber and Rust/WASM
+**WebVOWL rewritten in Rust with a modern React frontend.**
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue)](https://www.typescriptlang.org/)
-[![React](https://img.shields.io/badge/React-18.3-61dafb)](https://reactjs.org/)
+WasmVOWL is a modern web application for visualizing ontologies, based on the original [WebVOWL](http://vowl.visualdataweb.org/) project. This project is a complete rewrite, featuring a Rust-powered backend compiled to WebAssembly (Wasm) for high-performance graph layout and rendering, and a modern, responsive frontend built with React.
 
-## Overview
+## Key Features
 
-WebVOWL Modern is a complete modernization of the WebVOWL ontology visualization tool, rebuilt from the ground up with:
+- **High-Performance Visualization**: Leveraging Rust and WebAssembly for efficient, client-side rendering of large and complex ontologies.
+- **Modern, Responsive UI**: A completely redesigned user interface built with React, providing a seamless and intuitive user experience across all devices.
+- **Interactive Graph Visualization**: Smooth, interactive controls for panning, zooming, and exploring ontology graphs.
+- **Extensible and Modular**: A clean, modern architecture that is easy to extend and customize.
+- **Based on a Proven Concept**: Built on the solid foundation of the original WebVOWL, a widely used and respected tool in the semantic web community.
 
-- **React Three Fiber** - Declarative WebGL rendering
-- **Rust/WASM** - High-performance force-directed layout engine
-- **TypeScript** - Full type safety
-- **Vite** - Lightning-fast development experience
+## Project Structure
 
-## Quick Start
+- **/legacy**: The original WebVOWL codebase, preserved for reference and comparison.
+- **/modern**: The new React-based frontend application.
+- **/rust-wasm**: The Rust-powered WebAssembly backend for graph layout and rendering.
 
-```bash
-# Clone repository
-git clone https://github.com/VisualDataWeb/WebVOWL.git
-cd WebVOWL/modern
-
-# Install dependencies
-npm install
-
-# Start development server
-npm run dev
-```
-
-Visit [http://localhost:5173](http://localhost:5173)
-
-## Features
-
-### Core Capabilities
-
-- ⚡ **High Performance** - Rust/WASM physics engine (4x faster than JavaScript)
-- 🎨 **WebGL Rendering** - Hardware-accelerated 60fps+ graphics
-- 📊 **Interactive Graphs** - Click, drag, zoom, and filter ontologies
-- 🔍 **Real-time Search** - Find and highlight nodes instantly
-- 📤 **Export** - SVG, PNG, and JSON export
-- 🎯 **Type Safe** - Full TypeScript coverage
-
-### Technical Highlights
-
-- React 18 with concurrent features
-- React Three Fiber for declarative 3D
-- Zustand for lightweight state management
-- Immer for immutable updates
-- Vite for sub-second builds
-
-## Architecture
-
-### Technology Stack
-
-```
-┌─────────────────────────────────────┐
-│   React 18 + TypeScript             │
-│   Component-based UI                │
-└──────────────┬──────────────────────┘
-               │
-┌──────────────▼──────────────────────┐
-│   React Three Fiber (R3F)           │
-│   Declarative WebGL rendering       │
-└──────────────┬──────────────────────┘
-               │
-┌──────────────▼──────────────────────┐
-│   Rust/WASM Layout Engine           │
-│   Force-directed graph algorithm    │
-└─────────────────────────────────────┘
-```
-
-### Project Structure
-
-```
-modern/
-├── src/
-│   ├── components/       # React components
-│   │   ├── Canvas/       # R3F rendering layer
-│   │   ├── UI/           # Interface components
-│   │   └── Loaders/      # Data loading
-│   ├── stores/           # State management
-│   ├── hooks/            # Custom hooks
-│   ├── lib/              # Core utilities
-│   └── types/            # TypeScript definitions
-├── public/               # Static assets
-└── rust-wasm/            # WASM module
-```
-
-## Development
+## Getting Started
 
 ### Prerequisites
 
-- Node.js 18+
-- npm or yarn
-- Rust (for WASM development)
+- [Node.js](https://nodejs.org/) (v18 or higher)
+- [Rust](https://www.rust-lang.org/) (latest stable version)
+- [wasm-pack](https://rustwasm.github.io/wasm-pack/)
 
-### Development Workflow
+### Installation and Setup
 
-```bash
-# Start dev server (with HMR)
-npm run dev
+1.  **Clone the repository:**
 
-# Type checking
-npm run type-check
+    ```bash
+    git clone https://github.com/your-username/WasmVOWL.git
+    cd WasmVOWL
+    ```
 
-# Linting
-npm run lint
+2.  **Build the Wasm backend:**
 
-# Build for production
-npm run build
+    ```bash
+    cd rust-wasm
+    wasm-pack build --target web
+    ```
 
-# Preview production build
-npm run preview
-```
+3.  **Install frontend dependencies:**
 
-### WASM Development
+    ```bash
+    cd ../modern
+    npm install
+    ```
 
-```bash
-cd rust-wasm
+4.  **Run the development server:**
 
-# Build WASM module
-npm run build
+    ```bash
+    npm run dev
+    ```
 
-# Run tests
-npm test
-
-# Run benchmarks
-npm run bench
-```
-
-## Usage
-
-### Loading Ontologies
-
-**From File:**
-```typescript
-import { useGraphStore } from '@/stores/useGraphStore';
-
-const { loadOntology } = useGraphStore();
-
-// Load JSON ontology
-const response = await fetch('/ontologies/example.json');
-const data = await response.json();
-loadOntology(data);
-```
-
-**Drag & Drop:**
-```tsx
-import { FileDropZone } from '@/components/Loaders/FileDropZone';
-
-<FileDropZone />
-```
-
-### Simulation Control
-
-```typescript
-import { useWasmSimulation } from '@/hooks/useWasmSimulation';
-
-const { isRunning, alpha, start, stop, reset } = useWasmSimulation({
-  autoStart: true
-});
-
-// Control simulation
-start();  // Start physics
-stop();   // Pause simulation
-reset();  // Reset positions
-```
-
-### Graph Filtering
-
-```typescript
-const { addFilter, clearFilters } = useGraphStore();
-
-// Filter by node type
-addFilter({
-  type: 'nodeType',
-  config: { nodeType: 'class' }
-});
-
-// Filter by degree
-addFilter({
-  type: 'degree',
-  config: { min: 2, max: 10 }
-});
-
-// Clear all filters
-clearFilters();
-```
-
-## Configuration
-
-### Graph Settings
-
-```typescript
-import { useUIStore } from '@/stores/useUIStore';
-
-const { updateSettings } = useUIStore();
-
-updateSettings({
-  linkDistance: 150,      // Node spacing
-  chargeStrength: -400,   // Repulsion force
-  nodeScale: 1.2,         // Visual size multiplier
-  showLabels: true,       // Display labels
-  lodEnabled: true        // Level of detail optimization
-});
-```
-
-### Viewport Controls
-
-```typescript
-const { setZoom, toggleViewMode } = useUIStore();
-
-setZoom(1.5);           // Set zoom level
-toggleViewMode();       // Switch 2D/3D
-```
-
-## Performance
-
-### Benchmarks
-
-| Operation | Time | FPS |
-|-----------|------|-----|
-| Parse ontology (100 classes) | ~500μs | - |
-| Layout tick (100 nodes) | ~150μs | 60 |
-| Render frame (100 nodes) | ~16ms | 60 |
-| Full simulation (100 nodes, 50 iter) | ~8ms | - |
-
-### Comparison with Legacy
-
-| Metric | Legacy (D3.js) | Modern (R3F) | Improvement |
-|--------|----------------|--------------|-------------|
-| Dev server start | 15s | 240ms | **62x** |
-| HMR update | 2-3s | <100ms | **20x** |
-| Layout computation | 100ms | 25ms | **4x** |
-| Bundle size | 800KB | 500KB | **37%** smaller |
-
-## Deployment
-
-### Production Build
-
-```bash
-npm run build
-```
-
-Output directory: `dist/`
-
-### Docker
-
-```dockerfile
-# Build
-docker build -t webvowl:modern .
-
-# Run
-docker run -p 8080:80 webvowl:modern
-```
-
-### Static Hosting
-
-Deploy `dist/` to:
-- Vercel
-- Netlify
-- GitHub Pages
-- AWS S3 + CloudFront
-- Any static host
-
-## Documentation
-
-- [Development Guide](./CLAUDE.md) - Setup and architecture
-- [API Reference](./docs/api/) - Type definitions and interfaces
-- [Examples](./docs/examples/) - Usage examples
-- [Contributing](./CONTRIBUTING.md) - Contribution guidelines
-
-## Troubleshooting
-
-### WASM Not Loading
-
-Ensure WASM plugin is configured in `vite.config.ts`:
-
-```typescript
-import wasm from 'vite-plugin-wasm';
-
-export default defineConfig({
-  plugins: [wasm()]
-});
-```
-
-### Poor Performance
-
-Enable optimizations:
-
-```typescript
-updateSettings({
-  lodEnabled: true,
-  maxFPS: 30
-});
-```
-
-### Memory Issues
-
-Reduce simulation complexity:
-
-```typescript
-updateSettings({
-  linkDistance: 200,
-  chargeStrength: -200
-});
-```
+The application will be available at `http://localhost:5173`.
 
 ## Contributing
 
-We welcome contributions! Please see [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines.
-
-### Development Setup
-
-1. Fork repository
-2. Create feature branch
-3. Make changes
-4. Add tests
-5. Submit pull request
+Contributions are welcome! Please feel free to submit a pull request or open an issue to discuss your ideas.
 
 ## License
 
-MIT License - see [license.txt](./license.txt)
-
-## Credits
-
-- **Original WebVOWL** - VisualDataWeb team
-- **Rust/WASM Engine** - Modern performance layer
-- **React Three Fiber** - Declarative 3D rendering
-
-## Support
-
-- **Issues**: [GitHub Issues](https://github.com/VisualDataWeb/WebVOWL/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/VisualDataWeb/WebVOWL/discussions)
-
----
-
-**Made with ❤️ using React Three Fiber and Rust/WASM**
+This project is licensed under the MIT License - see the [LICENSE.txt](LICENSE.txt) file for details.

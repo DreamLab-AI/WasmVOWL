@@ -1,0 +1,36 @@
+{
+  "name": "webvowl-wasm",
+  "version": "1.0.0",
+  "description": "High-performance WASM implementation of WebVOWL",
+  "main": "pkg/webvowl_wasm.js",
+  "types": "pkg/webvowl_wasm.d.ts",
+  "files": [
+    "pkg/**/*"
+  ],
+  "scripts": {
+    "build": "wasm-pack build --target web --release",
+    "build:dev": "wasm-pack build --target web --dev",
+    "test": "wasm-pack test --headless --firefox --chrome",
+    "test:firefox": "wasm-pack test --headless --firefox",
+    "test:chrome": "wasm-pack test --headless --chrome",
+    "bench": "cargo bench",
+    "check": "cargo check --all-targets",
+    "clippy": "cargo clippy -- -D warnings",
+    "fmt": "cargo fmt -- --check"
+  },
+  "keywords": [
+    "owl",
+    "ontology",
+    "visualization",
+    "wasm",
+    "webvowl",
+    "d3",
+    "graph"
+  ],
+  "author": "WebVOWL Contributors",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/VisualDataWeb/WebVOWL.git"
+  }
+}

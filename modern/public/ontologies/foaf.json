@@ -1,0 +1,232 @@
+{
+  "header": {
+    "title": {
+      "en": "Friend of a Friend (FOAF) Ontology"
+    },
+    "iri": "http://xmlns.com/foaf/0.1/",
+    "version": "0.1",
+    "description": {
+      "en": "The Friend of a Friend (FOAF) RDF vocabulary, described using W3C RDF Schema and the Web Ontology Language"
+    }
+  },
+  "namespace": {
+    "foaf": "http://xmlns.com/foaf/0.1/",
+    "owl": "http://www.w3.org/2002/07/owl#",
+    "rdf": "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+    "rdfs": "http://www.w3.org/2000/01/rdf-schema#"
+  },
+  "class": [
+    {
+      "id": "Person",
+      "type": "owl:Class",
+      "iri": "http://xmlns.com/foaf/0.1/Person",
+      "label": {
+        "en": "Person",
+        "default": "Person"
+      },
+      "comment": {
+        "en": "A person"
+      }
+    },
+    {
+      "id": "Agent",
+      "type": "owl:Class",
+      "iri": "http://xmlns.com/foaf/0.1/Agent",
+      "label": {
+        "en": "Agent",
+        "default": "Agent"
+      },
+      "comment": {
+        "en": "An agent (person, group, software, or physical artifact)"
+      }
+    },
+    {
+      "id": "Organization",
+      "type": "owl:Class",
+      "iri": "http://xmlns.com/foaf/0.1/Organization",
+      "label": {
+        "en": "Organization",
+        "default": "Organization"
+      },
+      "comment": {
+        "en": "An organization"
+      }
+    },
+    {
+      "id": "Group",
+      "type": "owl:Class",
+      "iri": "http://xmlns.com/foaf/0.1/Group",
+      "label": {
+        "en": "Group",
+        "default": "Group"
+      },
+      "comment": {
+        "en": "A class of Agents"
+      }
+    },
+    {
+      "id": "Document",
+      "type": "owl:Class",
+      "iri": "http://xmlns.com/foaf/0.1/Document",
+      "label": {
+        "en": "Document",
+        "default": "Document"
+      },
+      "comment": {
+        "en": "A document"
+      }
+    },
+    {
+      "id": "Image",
+      "type": "owl:Class",
+      "iri": "http://xmlns.com/foaf/0.1/Image",
+      "label": {
+        "en": "Image",
+        "default": "Image"
+      },
+      "comment": {
+        "en": "An image"
+      }
+    },
+    {
+      "id": "Project",
+      "type": "owl:Class",
+      "iri": "http://xmlns.com/foaf/0.1/Project",
+      "label": {
+        "en": "Project",
+        "default": "Project"
+      },
+      "comment": {
+        "en": "A project (a collective endeavour)"
+      }
+    },
+    {
+      "id": "OnlineAccount",
+      "type": "owl:Class",
+      "iri": "http://xmlns.com/foaf/0.1/OnlineAccount",
+      "label": {
+        "en": "Online Account",
+        "default": "Online Account"
+      },
+      "comment": {
+        "en": "An online account"
+      }
+    }
+  ],
+  "property": [
+    {
+      "id": "knows",
+      "type": "owl:ObjectProperty",
+      "iri": "http://xmlns.com/foaf/0.1/knows",
+      "label": {
+        "en": "knows",
+        "default": "knows"
+      },
+      "comment": {
+        "en": "A person known by this person (indicating some level of reciprocated interaction)"
+      },
+      "domain": ["Person"],
+      "range": ["Person"]
+    },
+    {
+      "id": "member",
+      "type": "owl:ObjectProperty",
+      "iri": "http://xmlns.com/foaf/0.1/member",
+      "label": {
+        "en": "member",
+        "default": "member"
+      },
+      "comment": {
+        "en": "Indicates a member of a Group"
+      },
+      "domain": ["Group"],
+      "range": ["Agent"]
+    },
+    {
+      "id": "made",
+      "type": "owl:ObjectProperty",
+      "iri": "http://xmlns.com/foaf/0.1/made",
+      "label": {
+        "en": "made",
+        "default": "made"
+      },
+      "comment": {
+        "en": "Something made by this agent"
+      },
+      "domain": ["Agent"],
+      "range": ["Document"]
+    },
+    {
+      "id": "maker",
+      "type": "owl:ObjectProperty",
+      "iri": "http://xmlns.com/foaf/0.1/maker",
+      "label": {
+        "en": "maker",
+        "default": "maker"
+      },
+      "comment": {
+        "en": "An agent that made this thing"
+      },
+      "domain": ["Document"],
+      "range": ["Agent"],
+      "inverse": "made"
+    },
+    {
+      "id": "depiction",
+      "type": "owl:ObjectProperty",
+      "iri": "http://xmlns.com/foaf/0.1/depiction",
+      "label": {
+        "en": "depiction",
+        "default": "depiction"
+      },
+      "comment": {
+        "en": "A depiction of some thing"
+      },
+      "domain": ["Person"],
+      "range": ["Image"]
+    },
+    {
+      "id": "homepage",
+      "type": "owl:ObjectProperty",
+      "iri": "http://xmlns.com/foaf/0.1/homepage",
+      "label": {
+        "en": "homepage",
+        "default": "homepage"
+      },
+      "comment": {
+        "en": "A homepage for some thing"
+      },
+      "domain": ["Agent"],
+      "range": ["Document"],
+      "functional": true
+    },
+    {
+      "id": "account",
+      "type": "owl:ObjectProperty",
+      "iri": "http://xmlns.com/foaf/0.1/account",
+      "label": {
+        "en": "account",
+        "default": "account"
+      },
+      "comment": {
+        "en": "Indicates an account held by this Agent"
+      },
+      "domain": ["Agent"],
+      "range": ["OnlineAccount"]
+    },
+    {
+      "id": "currentProject",
+      "type": "owl:ObjectProperty",
+      "iri": "http://xmlns.com/foaf/0.1/currentProject",
+      "label": {
+        "en": "current project",
+        "default": "current project"
+      },
+      "comment": {
+        "en": "A current project this person works on"
+      },
+      "domain": ["Person"],
+      "range": ["Project"]
+    }
+  ]
+}

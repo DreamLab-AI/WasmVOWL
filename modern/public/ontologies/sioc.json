@@ -1,0 +1,303 @@
+{
+  "header": {
+    "title": {
+      "en": "SIOC (Semantically-Interlinked Online Communities) Core Ontology"
+    },
+    "iri": "http://rdfs.org/sioc/ns#",
+    "version": "1.36",
+    "description": {
+      "en": "SIOC is an ontology for describing the information in online communities"
+    }
+  },
+  "namespace": {
+    "sioc": "http://rdfs.org/sioc/ns#",
+    "owl": "http://www.w3.org/2002/07/owl#",
+    "rdf": "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+    "rdfs": "http://www.w3.org/2000/01/rdf-schema#"
+  },
+  "class": [
+    {
+      "id": "User",
+      "type": "owl:Class",
+      "iri": "http://rdfs.org/sioc/ns#User",
+      "label": {
+        "en": "User",
+        "default": "User"
+      },
+      "comment": {
+        "en": "A User is an agent that performs actions in an online community"
+      }
+    },
+    {
+      "id": "Site",
+      "type": "owl:Class",
+      "iri": "http://rdfs.org/sioc/ns#Site",
+      "label": {
+        "en": "Site",
+        "default": "Site"
+      },
+      "comment": {
+        "en": "A Site is the location of an online community or set of communities"
+      }
+    },
+    {
+      "id": "Forum",
+      "type": "owl:Class",
+      "iri": "http://rdfs.org/sioc/ns#Forum",
+      "label": {
+        "en": "Forum",
+        "default": "Forum"
+      },
+      "comment": {
+        "en": "A Forum can be thought of as a channel or discussion area on which Posts are made"
+      }
+    },
+    {
+      "id": "Post",
+      "type": "owl:Class",
+      "iri": "http://rdfs.org/sioc/ns#Post",
+      "label": {
+        "en": "Post",
+        "default": "Post"
+      },
+      "comment": {
+        "en": "An article or message posted by a User to a Forum"
+      }
+    },
+    {
+      "id": "Thread",
+      "type": "owl:Class",
+      "iri": "http://rdfs.org/sioc/ns#Thread",
+      "label": {
+        "en": "Thread",
+        "default": "Thread"
+      },
+      "comment": {
+        "en": "A container for a series of threaded discussion Posts"
+      }
+    },
+    {
+      "id": "Container",
+      "type": "owl:Class",
+      "iri": "http://rdfs.org/sioc/ns#Container",
+      "label": {
+        "en": "Container",
+        "default": "Container"
+      },
+      "comment": {
+        "en": "An area in which content Items are contained"
+      }
+    },
+    {
+      "id": "Item",
+      "type": "owl:Class",
+      "iri": "http://rdfs.org/sioc/ns#Item",
+      "label": {
+        "en": "Item",
+        "default": "Item"
+      },
+      "comment": {
+        "en": "An Item is something which can be in a Container"
+      }
+    },
+    {
+      "id": "Role",
+      "type": "owl:Class",
+      "iri": "http://rdfs.org/sioc/ns#Role",
+      "label": {
+        "en": "Role",
+        "default": "Role"
+      },
+      "comment": {
+        "en": "A Role is a function of a User within a scope of a particular Forum"
+      }
+    },
+    {
+      "id": "Usergroup",
+      "type": "owl:Class",
+      "iri": "http://rdfs.org/sioc/ns#Usergroup",
+      "label": {
+        "en": "Usergroup",
+        "default": "Usergroup"
+      },
+      "comment": {
+        "en": "A set of Users who have shared access to Items and discussions"
+      }
+    }
+  ],
+  "property": [
+    {
+      "id": "has_creator",
+      "type": "owl:ObjectProperty",
+      "iri": "http://rdfs.org/sioc/ns#has_creator",
+      "label": {
+        "en": "has creator",
+        "default": "has creator"
+      },
+      "comment": {
+        "en": "This is the User who made this resource"
+      },
+      "domain": ["Item"],
+      "range": ["User"]
+    },
+    {
+      "id": "has_container",
+      "type": "owl:ObjectProperty",
+      "iri": "http://rdfs.org/sioc/ns#has_container",
+      "label": {
+        "en": "has container",
+        "default": "has container"
+      },
+      "comment": {
+        "en": "The Container to which this Item belongs"
+      },
+      "domain": ["Item"],
+      "range": ["Container"]
+    },
+    {
+      "id": "container_of",
+      "type": "owl:ObjectProperty",
+      "iri": "http://rdfs.org/sioc/ns#container_of",
+      "label": {
+        "en": "container of",
+        "default": "container of"
+      },
+      "comment": {
+        "en": "An Item that this Container contains"
+      },
+      "domain": ["Container"],
+      "range": ["Item"],
+      "inverse": "has_container"
+    },
+    {
+      "id": "has_reply",
+      "type": "owl:ObjectProperty",
+      "iri": "http://rdfs.org/sioc/ns#has_reply",
+      "label": {
+        "en": "has reply",
+        "default": "has reply"
+      },
+      "comment": {
+        "en": "Points to an Item or Post that is a reply or response to this Item or Post"
+      },
+      "domain": ["Post"],
+      "range": ["Post"]
+    },
+    {
+      "id": "reply_of",
+      "type": "owl:ObjectProperty",
+      "iri": "http://rdfs.org/sioc/ns#reply_of",
+      "label": {
+        "en": "reply of",
+        "default": "reply of"
+      },
+      "comment": {
+        "en": "Links to an Item or Post to which this is a reply"
+      },
+      "domain": ["Post"],
+      "range": ["Post"],
+      "inverse": "has_reply"
+    },
+    {
+      "id": "has_moderator",
+      "type": "owl:ObjectProperty",
+      "iri": "http://rdfs.org/sioc/ns#has_moderator",
+      "label": {
+        "en": "has moderator",
+        "default": "has moderator"
+      },
+      "comment": {
+        "en": "A User who is a moderator of this Forum"
+      },
+      "domain": ["Forum"],
+      "range": ["User"]
+    },
+    {
+      "id": "moderator_of",
+      "type": "owl:ObjectProperty",
+      "iri": "http://rdfs.org/sioc/ns#moderator_of",
+      "label": {
+        "en": "moderator of",
+        "default": "moderator of"
+      },
+      "comment": {
+        "en": "A Forum that a User is a moderator of"
+      },
+      "domain": ["User"],
+      "range": ["Forum"],
+      "inverse": "has_moderator"
+    },
+    {
+      "id": "member_of",
+      "type": "owl:ObjectProperty",
+      "iri": "http://rdfs.org/sioc/ns#member_of",
+      "label": {
+        "en": "member of",
+        "default": "member of"
+      },
+      "comment": {
+        "en": "A Usergroup that this User is a member of"
+      },
+      "domain": ["User"],
+      "range": ["Usergroup"]
+    },
+    {
+      "id": "has_member",
+      "type": "owl:ObjectProperty",
+      "iri": "http://rdfs.org/sioc/ns#has_member",
+      "label": {
+        "en": "has member",
+        "default": "has member"
+      },
+      "comment": {
+        "en": "A User that is a member of this Usergroup"
+      },
+      "domain": ["Usergroup"],
+      "range": ["User"],
+      "inverse": "member_of"
+    },
+    {
+      "id": "host_of",
+      "type": "owl:ObjectProperty",
+      "iri": "http://rdfs.org/sioc/ns#host_of",
+      "label": {
+        "en": "host of",
+        "default": "host of"
+      },
+      "comment": {
+        "en": "A Forum that is hosted on this Site"
+      },
+      "domain": ["Site"],
+      "range": ["Forum"]
+    },
+    {
+      "id": "has_host",
+      "type": "owl:ObjectProperty",
+      "iri": "http://rdfs.org/sioc/ns#has_host",
+      "label": {
+        "en": "has host",
+        "default": "has host"
+      },
+      "comment": {
+        "en": "The Site that hosts this Forum"
+      },
+      "domain": ["Forum"],
+      "range": ["Site"],
+      "inverse": "host_of"
+    },
+    {
+      "id": "parent_of",
+      "type": "owl:ObjectProperty",
+      "iri": "http://rdfs.org/sioc/ns#parent_of",
+      "label": {
+        "en": "parent of",
+        "default": "parent of"
+      },
+      "comment": {
+        "en": "A child Container or Forum that this Container or Forum is a parent of"
+      },
+      "domain": ["Container"],
+      "range": ["Container"]
+    }
+  ]
+}

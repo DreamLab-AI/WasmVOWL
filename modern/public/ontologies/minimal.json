@@ -1,0 +1,106 @@
+{
+  "header": {
+    "title": {
+      "en": "Minimal Example Ontology"
+    },
+    "iri": "http://example.com/minimal",
+    "version": "1.0.0",
+    "description": {
+      "en": "A minimal ontology for testing WebVOWL Modern"
+    }
+  },
+  "namespace": {
+    "ex": "http://example.com/",
+    "owl": "http://www.w3.org/2002/07/owl#",
+    "rdf": "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+    "rdfs": "http://www.w3.org/2000/01/rdf-schema#"
+  },
+  "class": [
+    {
+      "id": "Person",
+      "type": "owl:Class",
+      "iri": "http://example.com/Person",
+      "label": {
+        "en": "Person",
+        "default": "Person"
+      },
+      "comment": {
+        "en": "Represents a human being"
+      },
+      "instances": 10
+    },
+    {
+      "id": "Organization",
+      "type": "owl:Class",
+      "iri": "http://example.com/Organization",
+      "label": {
+        "en": "Organization",
+        "default": "Organization"
+      },
+      "comment": {
+        "en": "Represents an organization"
+      },
+      "instances": 5
+    },
+    {
+      "id": "Document",
+      "type": "owl:Class",
+      "iri": "http://example.com/Document",
+      "label": {
+        "en": "Document",
+        "default": "Document"
+      },
+      "comment": {
+        "en": "Represents a document"
+      },
+      "instances": 20
+    }
+  ],
+  "property": [
+    {
+      "id": "worksFor",
+      "type": "owl:ObjectProperty",
+      "iri": "http://example.com/worksFor",
+      "label": {
+        "en": "works for",
+        "default": "works for"
+      },
+      "comment": {
+        "en": "Links a person to their organization"
+      },
+      "domain": ["Person"],
+      "range": ["Organization"],
+      "functional": false
+    },
+    {
+      "id": "created",
+      "type": "owl:ObjectProperty",
+      "iri": "http://example.com/created",
+      "label": {
+        "en": "created",
+        "default": "created"
+      },
+      "comment": {
+        "en": "Links a person to a document they created"
+      },
+      "domain": ["Person"],
+      "range": ["Document"],
+      "functional": false
+    },
+    {
+      "id": "published",
+      "type": "owl:ObjectProperty",
+      "iri": "http://example.com/published",
+      "label": {
+        "en": "published",
+        "default": "published"
+      },
+      "comment": {
+        "en": "Links an organization to a document they published"
+      },
+      "domain": ["Organization"],
+      "range": ["Document"],
+      "functional": false
+    }
+  ]
+}

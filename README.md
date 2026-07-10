@@ -1,6 +1,8 @@
-# WebVOWL Modern
+# WasmVOWL
 
 > High-performance ontology visualization with React Three Fiber and Rust/WASM
+>
+> DreamLab-AI's WASM-native rebuild of [VisualDataWeb/WebVOWL](https://github.com/VisualDataWeb/WebVOWL).
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue)](https://www.typescriptlang.org/)
@@ -19,8 +21,8 @@ WebVOWL Modern is a complete modernization of the WebVOWL ontology visualization
 
 ```bash
 # Clone repository
-git clone https://github.com/VisualDataWeb/WebVOWL.git
-cd WebVOWL/modern
+git clone https://github.com/DreamLab-AI/WasmVOWL.git
+cd WasmVOWL/modern
 
 # Install dependencies
 npm install
@@ -332,8 +334,8 @@ MIT License - see [license.txt](./license.txt)
 
 ## Support
 
-- **Issues**: [GitHub Issues](https://github.com/VisualDataWeb/WebVOWL/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/VisualDataWeb/WebVOWL/discussions)
+- **Issues**: [GitHub Issues](https://github.com/DreamLab-AI/WasmVOWL/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/DreamLab-AI/WasmVOWL/discussions)
 
 ---
 

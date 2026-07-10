@@ -1,11 +1,11 @@
 [package]
 name = "webvowl-wasm"
 version = "1.0.0"
-authors = ["WebVOWL Contributors"]
+authors = ["DreamLab-AI"]
 edition = "2021"
 license = "MIT"
 description = "High-performance WASM implementation of WebVOWL ontology visualizer"
-repository = "https://github.com/VisualDataWeb/WebVOWL"
+repository = "https://github.com/DreamLab-AI/WasmVOWL"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -25,7 +25,6 @@ web-sys = { version = "0.3", features = [
     "CanvasRenderingContext2d",
     "HtmlCanvasElement",
 ] }
-wee_alloc = { version = "0.4", optional = true }
 thiserror = "1.0"
 petgraph = "0.6"
 nalgebra = "0.32"

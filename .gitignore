@@ -16,3 +16,10 @@ webvowl*.zip
 
 # NetBeans files
 **/nbproject/**
+
+# Agent orchestration ephemera (claude-flow / hive-mind / swarm)
+.claude-flow/
+.hive-mind/
+.swarm/
+.agentic-qe/
+*.session.json

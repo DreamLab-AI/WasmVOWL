@@ -38,14 +38,9 @@ modern/                    # Modern React application
 ├── public/                # Static assets
 └── vite.config.ts         # Vite configuration
 
-rust-wasm/                 # Rust/WASM layout engine
-├── src/
-│   ├── lib.rs
-│   ├── graph/             # Graph data structures
-│   ├── layout/            # Force-directed algorithm
-│   ├── ontology/          # OWL parsing
-│   └── bindings/          # WASM JavaScript bindings
-└── pkg/                   # Built WASM package
+(The Rust/WASM layout engine is NOT in this repo — it lives in
+https://github.com/DreamLab-AI/vowl-wasm and is installed as the pinned
+`@dreamlab-ai/vowl-wasm` package.)
 
 legacy/                    # Archived D3.js implementation
 └── src/                   # Original JavaScript code
@@ -70,14 +65,10 @@ npm run type-check       # TypeScript checking
 
 ### WASM Module
 
-```bash
-cd rust-wasm
-
-npm run build            # Build WASM (required before running modern app)
-npm run build:dev        # Build with debug symbols
-npm test                 # Run tests
-npm run bench            # Run benchmarks
-```
+Nothing here builds it — it is the published `@dreamlab-ai/vowl-wasm` package,
+fetched by `npm ci` in `modern/`. To change the engine, work in
+https://github.com/DreamLab-AI/vowl-wasm, publish a new version, then bump the pin in
+`modern/package.json` and regenerate `modern/package-lock.json`.
 
 ## Key Architectural Patterns
 
@@ -207,13 +198,8 @@ These are passed to WASM via `useWasmSimulation` hook.
 
 ### Building
 
-```bash
-cd rust-wasm
-wasm-pack build --target web
-```
-
-Output: `pkg/` directory with:
-- `webvowl_wasm.js` - JavaScript glue code
+Not built here. The published bundle ships `vowl_wasm.js` (glue),
+`vowl_wasm_bg.wasm` and `vowl_wasm.d.ts`, pinned in `modern/package.json`.
 - `webvowl_wasm_bg.wasm` - WASM binary
 - `webvowl_wasm.d.ts` - TypeScript definitions
 
@@ -240,7 +226,7 @@ class WebVowl {
 
 ```typescript
 // Dynamic import
-const wasmModule = await import('../../rust-wasm/pkg/webvowl_wasm.js');
+const wasmModule = await import('@dreamlab-ai/vowl-wasm');
 await wasmModule.default();
 
 // Create instance
@@ -314,12 +300,8 @@ test('renders node', () => {
 
 ### WASM Testing
 
-Rust unit tests in `rust-wasm/`:
-
-```bash
-cargo test
-wasm-pack test --headless --firefox
-```
+Rust unit tests live in the engine repo (https://github.com/DreamLab-AI/vowl-wasm)
+and run in its CI, not here.
 
 ## Deployment
 
@@ -354,9 +336,8 @@ const apiUrl = import.meta.env.VITE_API_URL;
 
 **Solution**:
 ```bash
-cd rust-wasm
-cargo clean
-npm run build
+cd modern
+npm ci
 ```
 
 ### TypeScript Errors

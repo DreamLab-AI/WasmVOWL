@@ -18,7 +18,11 @@ type WebVowl = {
   runSimulation(iterations: number): void;
   isFinished(): boolean;
   getAlpha(): number;
-  getGraphData(): any;
+  /** Node ids, in the same index order as getNodePositions(). Stable for the
+   *  lifetime of a loaded graph, so capture once after loadOntology(). */
+  getNodeIds(): string[];
+  /** Interleaved live positions: node i is at [2i], [2i + 1]. */
+  getNodePositions(): Float32Array;
   getNodeCount(): number;
   getEdgeCount(): number;
   getStatistics(): any;
@@ -33,6 +37,9 @@ export function useWasmSimulation(options: UseWasmSimulationOptions = {}) {
   const { autoStart = true, iterations } = options;
 
   const wasmRef = useRef<WebVowl | null>(null);
+  /** Index-to-id map for getNodePositions(). Captured once per loaded graph:
+   *  the engine guarantees the order is stable until the next loadOntology. */
+  const nodeIdsRef = useRef<string[]>([]);
   const [isInitialized, setIsInitialized] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
   const [alpha, setAlpha] = useState(1.0);
@@ -47,7 +54,7 @@ export function useWasmSimulation(options: UseWasmSimulationOptions = {}) {
     async function initWasm() {
       try {
         // Dynamically import WASM module
-        const wasmModule = await import('../../../rust-wasm/pkg/webvowl_wasm.js');
+        const wasmModule = await import('@dreamlab-ai/vowl-wasm');
         await wasmModule.default(); // Initialize WASM
 
         if (!mounted) return;
@@ -96,6 +103,7 @@ export function useWasmSimulation(options: UseWasmSimulationOptions = {}) {
 
     try {
       wasmRef.current.loadOntology(JSON.stringify(graphData));
+      nodeIdsRef.current = wasmRef.current.getNodeIds();
       wasmRef.current.initSimulation();
 
       if (autoStart) {
@@ -140,12 +148,10 @@ export function useWasmSimulation(options: UseWasmSimulationOptions = {}) {
       setAlpha(currentAlpha);
 
       // Get updated positions and update React state
-      const graphData = wasm.getGraphData();
-
-      if (graphData && graphData.nodes) {
-        graphData.nodes.forEach((node: any) => {
-          updateNodePosition(node.id, [node.x, node.y, 0]);
-        });
+      const positions = wasm.getNodePositions();
+      const ids = nodeIdsRef.current;
+      for (let i = 0; i < ids.length; i++) {
+        updateNodePosition(ids[i], [positions[2 * i], positions[2 * i + 1], 0]);
       }
     } catch (error) {
       console.error('Simulation tick error:', error);
@@ -178,11 +184,10 @@ export function useWasmSimulation(options: UseWasmSimulationOptions = {}) {
     if (wasmRef.current && !isRunning) {
       wasmRef.current.tick();
 
-      const graphData = wasmRef.current.getGraphData();
-      if (graphData && graphData.nodes) {
-        graphData.nodes.forEach((node: any) => {
-          updateNodePosition(node.id, [node.x, node.y, 0]);
-        });
+      const positions = wasmRef.current.getNodePositions();
+      const ids = nodeIdsRef.current;
+      for (let i = 0; i < ids.length; i++) {
+        updateNodePosition(ids[i], [positions[2 * i], positions[2 * i + 1], 0]);
       }
 
       setAlpha(wasmRef.current.getAlpha());

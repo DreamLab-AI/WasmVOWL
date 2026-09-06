@@ -16,7 +16,7 @@ export default defineConfig({
     }
   },
   optimizeDeps: {
-    exclude: ['webvowl-wasm']
+    exclude: ['@dreamlab-ai/vowl-wasm']
   },
   build: {
     target: 'esnext'

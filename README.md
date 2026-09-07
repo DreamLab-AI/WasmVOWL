@@ -340,3 +340,7 @@ MIT License - see [license.txt](./license.txt)
 ---
 
 **Made with ❤️ using React Three Fiber and Rust/WASM**
+
+## Current verification and closeout — 2026-09-04
+
+The inspected modern manifest uses React 19.2. Local validation found 47 passing native Rust tests and 19 passing / 60 failing frontend tests, including Map initialisation failures. The React hook and Rust parser also disagree on the input schema. Earlier performance and completion claims are not re-certified by these checks. See the [proposed consumer-contract ADR](docs/adr/ADR-001-explorer-consumer-contract-closeout.md) for evidence, publisher-lineage limits and release acceptance conditions.

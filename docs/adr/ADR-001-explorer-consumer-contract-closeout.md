@@ -31,3 +31,7 @@ Evidence: [estate explorer review](../../../VisionFlow/docs/estate-review/ontolo
 ## Estate execution scope — 2026-09-07
 
 The standalone demo remains a held variant, distinct from the deployed publisher explorer using the maintained vowl-wasm package. The [current estate audit](../../../VisionFlow/docs/estate-review/2026-09-07-estate-audit.md) retains the source mismatch and dated failing tests; a passing public publisher search journey does not close this proposal. No standalone deployment or performance claim is added.
+
+## Remote integration qualification — 2026-09-07
+
+Remote commit `b359aa0` extracts the vendored Rust crate, installs the v0.1.1 release archive and adds stable node-ID/position accessors in the React hook. The integration retains those changes and the local hygiene/rebranding commits. The hook still sends `nodes`/`edges`; generation/schema agreement and topology lifetime remain consumer acceptance requirements. Prior native test counts describe the removed local engine, not the installed archive. The proposed/partial/inactive axes are unchanged.

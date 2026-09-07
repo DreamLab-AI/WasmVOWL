@@ -8,7 +8,7 @@ WebVOWL Modern is a high-performance ontology visualization tool built with Reac
 
 ### Technology Stack
 
-- **React 18.3** - UI framework
+- **React 19.2** - UI framework
 - **React Three Fiber 9.4** - Declarative WebGL with Three.js
 - **TypeScript 5.9** - Type safety
 - **Zustand 5.0** - State management
@@ -27,13 +27,8 @@ modern/                    # Modern React application
     types/                 # TypeScript definitions (graph.ts, ontology.ts, ui.ts)
     utils/                 # Helper functions
 
-rust-wasm/                 # Rust/WASM layout engine
-  src/
-    graph/                 # Graph data structures
-    layout/                # Force-directed algorithm
-    ontology/              # OWL parsing
-    bindings/              # WASM JavaScript bindings
-  pkg/                     # Built WASM package
+The engine lives in DreamLab-AI/vowl-wasm and is installed through the locked
+@dreamlab-ai/vowl-wasm dependency; it is not vendored here.
 
 legacy/                    # Archived D3.js implementation (DO NOT MODIFY)
 ```
@@ -53,14 +48,7 @@ npm run type-check       # TypeScript checking
 
 ### WASM Module
 
-```bash
-cd rust-wasm
-npm run build            # Build WASM (required before running modern app)
-npm run build:dev        # Build with debug symbols
-npm test                 # Run tests
-npm run bench            # Run benchmarks
-wasm-pack build --target web   # Direct wasm-pack build
-```
+Run `npm ci` in `modern/` to install the pinned engine. Engine changes and Rust tests belong in DreamLab-AI/vowl-wasm; update the frontend dependency and lock together.
 
 ## Key Architectural Patterns
 
@@ -91,7 +79,8 @@ class WebVowl {
   setChargeStrength(strength: number): void;
   isFinished(): boolean;
   getAlpha(): number;
-  getGraphData(): any;
+  getNodeIds(): string[];
+  getNodePositions(): Float32Array;
   getStatistics(): any;
 }
 ```
@@ -113,11 +102,9 @@ Functional components with `useFrame` for animations, `useMemo` for expensive co
 
 - `@/*` maps to `./src/*` (tsconfig.json and vite.config.ts)
 
-## Project Status: PRODUCTION READY
+## Verification status
 
-- Completion Date: November 10, 2025
-- 85+ tests, 91% coverage
-- 4-10x performance improvement over legacy
+Production readiness, historical coverage and speedup claims are not current acceptance evidence. See docs/adr/ADR-001-explorer-consumer-contract-closeout.md for the held standalone variant and dated test boundaries.
 
 ## Upstream References
 

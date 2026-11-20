@@ -1,9 +1,13 @@
 version: '3'
 
 services:
-    
+
     server:
-        build: .
+        build:
+            context: .
+            args:
+                WEBVOWL_WAR_URL: ${WEBVOWL_WAR_URL:?set an https URL for the WebVOWL war}
+                WEBVOWL_WAR_SHA256: ${WEBVOWL_WAR_SHA256:?set the SHA-256 of the war}
         command: catalina.sh run
         ports:
             - 8080:8080

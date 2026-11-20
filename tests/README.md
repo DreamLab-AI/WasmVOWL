@@ -1,28 +1,19 @@
-# WebVOWL Test Suite
+# WebVOWL Legacy Test Suite (not wired)
 
-Comprehensive London TDD test suite for WebVOWL ontology visualization.
-
-## Quick Start
-
-```bash
-# Install dependencies
-npm install
-
-# Run all tests
-npm test
-
-# Run specific test types
-npm run test:unit
-npm run test:integration
-npm run test:e2e
-npm run test:benchmark
-
-# Watch mode for development
-npm run test:watch
-
-# Generate coverage report
-npm run test:coverage
-```
+> **Status: orphaned, not runnable.** This suite targets the legacy D3 sources
+> under a root `src/` directory that no longer exists (the legacy code now lives
+> in `legacy/`), and `karma.conf.js` resolves `../src/**` from here. No root npm
+> script runs it, so the per-type commands (unit, integration, e2e, benchmark, coverage,
+> watch) described in earlier revisions of this file do not exist.
+>
+> What actually runs:
+>
+> - `npm test` at the root: the modern suite (`modern/`, Vitest) plus
+>   `checks/root-surface.test.mjs`.
+> - `npm run test:legacy` at the root: the legacy Grunt/Karma suite in
+>   `legacy/test/`.
+>
+> The files below are kept for reference only.
 
 ## Test Structure
 
@@ -206,225 +197,6 @@ expect(mockGraph.addNode).toHaveBeenCalledWith(nodeData);
 expect(mockGraph.addNode).toHaveBeenCalledTimes(3);
 ```
 
-## Running Tests
-
-### NPM Scripts
-
-```bash
-# Run all tests once
-npm test
-
-# Run with coverage report
-npm run test:coverage
-
-# Watch mode (auto-rerun on file changes)
-npm run test:watch
-
-# Run specific test file
-npm test -- tests/unit/parser.test.js
-
-# Run tests matching pattern
-npm test -- --grep "Parser Module"
-
-# Run tests in specific browser
-npm test -- --browsers=Chrome
-npm test -- --browsers=Firefox
-```
-
-### CI/CD Integration
-
-Tests run automatically on:
-
-- **Every commit**: Unit + Integration tests
-- **Pull requests**: Full test suite
-- **Nightly builds**: Full suite + benchmarks
-
-### Coverage Reports
-
-After running `npm run test:coverage`:
-
-```bash
-# View HTML report
-open coverage/index.html
-
-# View terminal summary
-cat coverage/lcov-report/index.html
-
-# Check coverage.json for programmatic access
-cat coverage/coverage.json
-```
-
-### Coverage Requirements
-
-| Metric | Target | Minimum |
-|--------|--------|---------|
-| Statements | 85% | 80% |
-| Branches | 80% | 75% |
-| Functions | 85% | 80% |
-| Lines | 85% | 80% |
-
-## Continuous Integration
-
-### GitHub Actions Example
-
-```yaml
-name: Test Suite
-
-on: [push, pull_request]
-
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-node@v2
-        with:
-          node-version: '14'
-      - run: npm install
-      - run: npm test
-      - run: npm run test:coverage
-      - uses: codecov/codecov-action@v2
-        with:
-          files: ./coverage/lcov.info
-```
-
-## Debugging Tests
-
-### Run Single Test
-
-```javascript
-// Use 'fit' instead of 'it' to focus on one test
-fit("should do something specific", function() {
-    // Only this test will run
-});
-
-// Use 'fdescribe' to focus on one suite
-fdescribe("Specific Module", function() {
-    // Only tests in this suite will run
-});
-```
-
-### Skip Tests
-
-```javascript
-// Temporarily skip a test
-xit("should do something", function() {
-    // This test will be skipped
-});
-
-// Skip a suite
-xdescribe("Module", function() {
-    // All tests in this suite will be skipped
-});
-```
-
-### Debug Output
-
-```javascript
-it("should debug something", function() {
-    var result = functionUnderTest();
-
-    // Print to console
-    console.log("Result:", result);
-
-    // Use debugger (if running with --debug-brk)
-    debugger;
-
-    expect(result).toBeDefined();
-});
-```
-
-## Best Practices
-
-### Test Independence
-
-✅ **DO**:
-- Each test runs independently
-- Clean up after each test
-- No shared state between tests
-
-❌ **DON'T**:
-- Rely on test execution order
-- Share variables between tests
-- Leave DOM elements after test
-
-### Test Speed
-
-✅ **DO**:
-- Keep unit tests fast (<100ms)
-- Use mocks for slow operations
-- Run integration tests separately
-
-❌ **DON'T**:
-- Make network requests in unit tests
-- Wait unnecessarily with setTimeout
-- Test implementation details
-
-### Test Maintenance
-
-✅ **DO**:
-- Update tests when requirements change
-- Refactor tests with production code
-- Remove obsolete tests
-
-❌ **DON'T**:
-- Comment out failing tests
-- Skip tests without explanation
-- Ignore test warnings
-
-## Troubleshooting
-
-### Common Issues
-
-**Problem**: "ReferenceError: d3 is not defined"
-- **Solution**: Ensure D3.js is loaded before tests in karma.conf.js
-
-**Problem**: "Timeout of 2000ms exceeded"
-- **Solution**: Increase timeout for async tests: `it("...", function(done) { ... }, 5000);`
-
-**Problem**: "Expected spy to have been called"
-- **Solution**: Check if async operation completed before assertion
-
-**Problem**: PhantomJS crashes
-- **Solution**: Use Chrome Headless: `npm test -- --browsers=ChromeHeadless`
-
-### Getting Help
-
-- 📖 Read test strategy: `/docs/testing/test-strategy.md`
-- 💬 Check existing tests for examples
-- 🐛 Open issue on GitHub
-- 📧 Contact testing team
-
-## Contributing
-
-### Pull Request Checklist
-
-Before submitting a PR:
-
-- [ ] All tests pass (`npm test`)
-- [ ] Coverage above threshold (`npm run test:coverage`)
-- [ ] New features have tests
-- [ ] Bug fixes have regression tests
-- [ ] Tests follow London TDD style
-- [ ] Test names are descriptive
-- [ ] No skipped tests (unless documented)
-
-### Adding New Tests
-
-1. Create test file in appropriate directory
-2. Follow naming convention: `*.test.js`
-3. Use Arrange-Act-Assert pattern
-4. Mock external dependencies
-5. Include both happy path and edge cases
-6. Run locally: `npm test`
-7. Verify coverage: `npm run test:coverage`
-
-## Resources
-
-- 📖 [Test Strategy Document](../docs/testing/test-strategy.md)
-- 📖 [Jasmine Documentation](https://jasmine.github.io/)
-- 📖 [London TDD Guide](https://github.com/testdouble/contributing-tests/wiki/London-school-TDD)
-- 📖 [JavaScript Testing Best Practices](https://github.com/goldbergyoni/javascript-testing-best-practices)
 
 ## License
 
@@ -432,6 +204,4 @@ MIT License - Same as WebVOWL
 
 ---
 
-**Last Updated**: 2025-11-10
-**Test Count**: 150+ tests
-**Coverage**: TBD (run `npm run test:coverage`)
+**Last Updated**: 2026-11-20 (marked orphaned)

@@ -28,10 +28,11 @@ test("F4: root test script runs the modern suite", () => {
   assert.match(pkg.scripts.test, /modern/);
 });
 
-test("F5: Dockerfile fetches over https and verifies a checksum", () => {
-  const d = read("Dockerfile");
-  assert.doesNotMatch(d, /http:\/\//, "plain HTTP download");
-  assert.match(d, /sha256sum\s+-c/, "no checksum verification");
+test("F5: the retired WebVOWL Docker image is not shipped", () => {
+  // The image ran upstream WebVOWL on an end-of-life Tomcat base, not this
+  // repository's code; it was retired on 2026-11-21.
+  assert.ok(!existsSync(resolve(root, "Dockerfile")), "Dockerfile is back");
+  assert.ok(!existsSync(resolve(root, "docker-compose.yml")), "docker-compose.yml is back");
 });
 
 test("F6: tests/README.md only documents npm scripts that exist", () => {

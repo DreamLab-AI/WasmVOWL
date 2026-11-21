@@ -4,8 +4,16 @@
 
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
+import { enableMapSet } from 'immer';
 import type { Node, Edge, GraphData, GraphFilter, GraphStatistics } from '../types/graph';
 import type { OntologyData } from '../types/ontology';
+
+// The state holds Maps and Sets. Immer drafts them only once its MapSet plugin
+// is enabled; without it every `set()` on this store throws "[Immer] The plugin
+// for 'MapSet' has not been loaded" (minified as "[Immer] minified error nr: 0").
+// Enabled here, where the Map/Set state is declared, so that anything importing
+// the store gets a working one.
+enableMapSet();
 
 interface GraphState {
   // Data
@@ -57,8 +65,105 @@ interface GraphState {
   updateStatistics: () => void;
 }
 
+/**
+ * Recompute `filteredNodes` / `filteredEdges` from `activeFilters`, on the
+ * draft the caller is already editing.
+ *
+ * This is a plain function, not a store action, on purpose: an action that is
+ * called from inside another action's `set(...)` runs against the last
+ * committed state, and the outer `set` then overwrites its result with the
+ * outer draft. Filters were therefore applied one step late (or never) and
+ * `loadOntology` left `statistics` null.
+ */
+function recomputeFilters(state: GraphState): void {
+  const { nodes, edges, activeFilters } = state;
+
+  // Start with all nodes and edges
+  const visibleNodes = new Set(nodes.keys());
+  const visibleEdges = new Set(edges.keys());
+
+  // Apply each filter
+  activeFilters.forEach((filter) => {
+    switch (filter.type) {
+      case 'nodeType':
+        nodes.forEach((node, id) => {
+          if (node.type !== filter.config.nodeType) {
+            visibleNodes.delete(id);
+          }
+        });
+        break;
+
+      case 'degree':
+        const minDegree = filter.config.min || 0;
+        const maxDegree = filter.config.max || Infinity;
+
+        nodes.forEach((node, id) => {
+          const degree = Array.from(edges.values()).filter(
+            (e) => e.source === id || e.target === id
+          ).length;
+
+          if (degree < minDegree || degree > maxDegree) {
+            visibleNodes.delete(id);
+          }
+        });
+        break;
+
+      case 'edgeType':
+        edges.forEach((edge, id) => {
+          if (edge.type !== filter.config.edgeType) {
+            visibleEdges.delete(id);
+          }
+        });
+        break;
+    }
+  });
+
+  // Remove edges with invisible nodes
+  edges.forEach((edge, id) => {
+    if (!visibleNodes.has(edge.source) || !visibleNodes.has(edge.target)) {
+      visibleEdges.delete(id);
+    }
+  });
+
+  state.filteredNodes = visibleNodes;
+  state.filteredEdges = visibleEdges;
+}
+
+/** Recompute `statistics` on the caller's draft; see [`recomputeFilters`]. */
+function recomputeStatistics(state: GraphState): void {
+  const { nodes, edges } = state;
+
+  const nodeCounts: Record<string, number> = {};
+  const edgeCounts: Record<string, number> = {};
+  const degrees: number[] = [];
+
+  nodes.forEach((node) => {
+    nodeCounts[node.type] = (nodeCounts[node.type] || 0) + 1;
+
+    const degree = Array.from(edges.values()).filter(
+      (e) => e.source === node.id || e.target === node.id
+    ).length;
+    degrees.push(degree);
+  });
+
+  edges.forEach((edge) => {
+    edgeCounts[edge.type] = (edgeCounts[edge.type] || 0) + 1;
+  });
+
+  state.statistics = {
+    nodeCount: nodes.size,
+    edgeCount: edges.size,
+    classCounts: nodeCounts,
+    propertyCounts: edgeCounts,
+    maxDegree: Math.max(...degrees, 0),
+    avgDegree: degrees.length > 0
+      ? degrees.reduce((a, b) => a + b, 0) / degrees.length
+      : 0
+  };
+}
+
 export const useGraphStore = create<GraphState>()(
-  immer((set, get) => ({
+  immer((set) => ({
     // Initial state
     nodes: new Map(),
     edges: new Map(),
@@ -117,8 +222,8 @@ export const useGraphStore = create<GraphState>()(
         }
       });
 
-      // Update statistics
-      get().updateStatistics();
+      // Update statistics, on this same draft
+      recomputeStatistics(state);
     }),
 
     clear: () => set((state) => {
@@ -130,6 +235,7 @@ export const useGraphStore = create<GraphState>()(
       state.selectedEdge = null;
       state.hoveredNode = null;
       state.hoveredEdge = null;
+      state.activeFilters = [];
       state.statistics = null;
     }),
 
@@ -185,12 +291,12 @@ export const useGraphStore = create<GraphState>()(
     // Filter operations
     addFilter: (filter) => set((state) => {
       state.activeFilters.push(filter);
-      get().applyFilters();
+      recomputeFilters(state);
     }),
 
     removeFilter: (index) => set((state) => {
       state.activeFilters.splice(index, 1);
-      get().applyFilters();
+      recomputeFilters(state);
     }),
 
     clearFilters: () => set((state) => {
@@ -201,90 +307,12 @@ export const useGraphStore = create<GraphState>()(
     }),
 
     applyFilters: () => set((state) => {
-      const { nodes, edges, activeFilters } = state;
-
-      // Start with all nodes and edges
-      const visibleNodes = new Set(nodes.keys());
-      const visibleEdges = new Set(edges.keys());
-
-      // Apply each filter
-      activeFilters.forEach((filter) => {
-        switch (filter.type) {
-          case 'nodeType':
-            nodes.forEach((node, id) => {
-              if (node.type !== filter.config.nodeType) {
-                visibleNodes.delete(id);
-              }
-            });
-            break;
-
-          case 'degree':
-            const minDegree = filter.config.min || 0;
-            const maxDegree = filter.config.max || Infinity;
-
-            nodes.forEach((node, id) => {
-              const degree = Array.from(edges.values()).filter(
-                (e) => e.source === id || e.target === id
-              ).length;
-
-              if (degree < minDegree || degree > maxDegree) {
-                visibleNodes.delete(id);
-              }
-            });
-            break;
-
-          case 'edgeType':
-            edges.forEach((edge, id) => {
-              if (edge.type !== filter.config.edgeType) {
-                visibleEdges.delete(id);
-              }
-            });
-            break;
-        }
-      });
-
-      // Remove edges with invisible nodes
-      edges.forEach((edge, id) => {
-        if (!visibleNodes.has(edge.source) || !visibleNodes.has(edge.target)) {
-          visibleEdges.delete(id);
-        }
-      });
-
-      state.filteredNodes = visibleNodes;
-      state.filteredEdges = visibleEdges;
+      recomputeFilters(state);
     }),
 
     // Statistics
     updateStatistics: () => set((state) => {
-      const { nodes, edges } = state;
-
-      const nodeCounts: Record<string, number> = {};
-      const edgeCounts: Record<string, number> = {};
-      const degrees: number[] = [];
-
-      nodes.forEach((node) => {
-        nodeCounts[node.type] = (nodeCounts[node.type] || 0) + 1;
-
-        const degree = Array.from(edges.values()).filter(
-          (e) => e.source === node.id || e.target === node.id
-        ).length;
-        degrees.push(degree);
-      });
-
-      edges.forEach((edge) => {
-        edgeCounts[edge.type] = (edgeCounts[edge.type] || 0) + 1;
-      });
-
-      state.statistics = {
-        nodeCount: nodes.size,
-        edgeCount: edges.size,
-        classCounts: nodeCounts,
-        propertyCounts: edgeCounts,
-        maxDegree: Math.max(...degrees, 0),
-        avgDegree: degrees.length > 0
-          ? degrees.reduce((a, b) => a + b, 0) / degrees.length
-          : 0
-      };
+      recomputeStatistics(state);
     })
   }))
 );

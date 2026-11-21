@@ -7,26 +7,36 @@ import { renderHook, act } from '@testing-library/react';
 import { useWasmSimulation } from '@/hooks/useWasmSimulation';
 import { useGraphStore } from '@/stores/useGraphStore';
 import { useUIStore } from '@/stores/useUIStore';
+import * as wasmModule from '@dreamlab-ai/vowl-wasm';
 
-// Mock the WASM module
-vi.mock('@/../rust-wasm/pkg/webvowl_wasm.js', () => {
+// Mock the WASM module under the specifier the hook actually imports. (This
+// used to name '@/../rust-wasm/pkg/webvowl_wasm.js', a path that no longer
+// exists, so the mock never applied and the real package tried to fetch its
+// .wasm file inside jsdom.)
+vi.mock('@dreamlab-ai/vowl-wasm', () => {
   return {
     default: vi.fn().mockResolvedValue(undefined),
-    WebVowl: vi.fn().mockImplementation(() => ({
-      loadOntology: vi.fn(),
-      setCenter: vi.fn(),
-      setLinkDistance: vi.fn(),
-      setChargeStrength: vi.fn(),
-      initSimulation: vi.fn(),
-      tick: vi.fn(),
-      runSimulation: vi.fn(),
-      isFinished: vi.fn().mockReturnValue(false),
-      getAlpha: vi.fn().mockReturnValue(1.0),
-      getGraphData: vi.fn().mockReturnValue({ nodes: [], edges: [] }),
-      getNodeCount: vi.fn().mockReturnValue(0),
-      getEdgeCount: vi.fn().mockReturnValue(0),
-      getStatistics: vi.fn().mockReturnValue({})
-    }))
+    // A `function`, not an arrow: the hook calls `new WebVowl()`, and vitest 4
+    // only lets a mock be constructed when its implementation is constructible.
+    WebVowl: vi.fn().mockImplementation(function () {
+      return {
+        loadOntology: vi.fn(),
+        setCenter: vi.fn(),
+        setLinkDistance: vi.fn(),
+        setChargeStrength: vi.fn(),
+        initSimulation: vi.fn(),
+        tick: vi.fn(),
+        runSimulation: vi.fn(),
+        isFinished: vi.fn().mockReturnValue(false),
+        getAlpha: vi.fn().mockReturnValue(1.0),
+        getNodeIds: vi.fn().mockReturnValue([]),
+        getNodePositions: vi.fn().mockReturnValue(new Float32Array(0)),
+        getGraphData: vi.fn().mockReturnValue({ nodes: [], edges: [] }),
+        getNodeCount: vi.fn().mockReturnValue(0),
+        getEdgeCount: vi.fn().mockReturnValue(0),
+        getStatistics: vi.fn().mockReturnValue({})
+      };
+    })
   };
 });
 
@@ -198,12 +208,13 @@ describe('useWasmSimulation', () => {
 
       // Update settings
       act(() => {
-        useUIStore.getState().updateSetting('linkDistance', 200);
+        useUIStore.getState().updateSettings({ linkDistance: 200 });
       });
 
-      // Settings should be applied to WASM module
-      // (verified through mock calls in integration tests)
-      expect(result.current.isInitialized).toBe(true);
+      // The new distance reaches the WASM engine instance the hook created.
+      const instances = vi.mocked(wasmModule.WebVowl).mock.results;
+      const engine = instances[instances.length - 1].value as { setLinkDistance: ReturnType<typeof vi.fn> };
+      expect(engine.setLinkDistance).toHaveBeenLastCalledWith(200);
     });
   });
 
@@ -250,16 +261,19 @@ describe('useWasmSimulation', () => {
 
   describe('Error Handling', () => {
     it('should handle WASM initialization failure', async () => {
-      // Mock initialization failure
+      // Make the module's init function reject for this one render. (A
+      // vi.mock() call inside a test is hoisted to the top of the file and
+      // would replace the mock for every test, so the failure is injected
+      // through the existing mock instead.)
       const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
-
-      vi.mock('@/../rust-wasm/pkg/webvowl_wasm.js', () => {
-        throw new Error('WASM initialization failed');
-      });
+      vi.mocked(wasmModule.default).mockRejectedValueOnce(new Error('WASM initialization failed'));
 
       const { result } = renderHook(() => useWasmSimulation());
 
-      // Should not crash
+      // The failure is logged, and the hook neither crashes nor reports itself ready.
+      await vi.waitFor(() => {
+        expect(consoleError).toHaveBeenCalledWith('Failed to initialize WASM:', expect.any(Error));
+      });
       expect(result.current.isInitialized).toBe(false);
 
       consoleError.mockRestore();

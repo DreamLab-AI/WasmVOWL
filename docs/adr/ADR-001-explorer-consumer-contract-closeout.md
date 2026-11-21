@@ -22,6 +22,8 @@ Treat a versioned consumer schema and reproducible publisher lineage as release 
 
 ## Closeout extension — 2026-09-04
 
+> Note 2026-11-21: the "Map mutation fails" and "19 passed, 60 failed" statements in Context are out of date. The Map failure was real: `modern/src/stores/useGraphStore.ts` never enabled Immer's MapSet plugin, so every `set()` on the store threw (now `enableMapSet()` there, near the top of the file). The same change fixed two store actions that called other actions from inside `set()` and lost the result (statistics after `loadOntology`, filters). `modern/` now passes 79 of 79 under `npm --prefix modern test`. The hook/parser mismatch, topology reset, real-corpus browser load and the remaining acceptance items are not addressed by this change and stay open.
+
 Work packages: CP-01/02/06/08. Dependencies: authoritative corpus/export identity, schema agreement and a browser-capable validation environment.
 
 Acceptance requires resolving Map initialisation and the hook/parser mismatch; proving that simulation ticks do not repeatedly reset topology; loading the actual corpus in a browser with the actual WASM module; retaining labels, endpoints and datatype semantics; and demonstrating visible errors, keyboard access, search/filter/selection/export and measured performance. Preserve historical reports as dated evidence and qualify any claim whose tested revision or hardware is unknown.

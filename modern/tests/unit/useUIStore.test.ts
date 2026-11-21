@@ -8,9 +8,9 @@ import type { GraphSettings } from '@/types/ui';
 
 describe('useUIStore', () => {
   beforeEach(() => {
-    // Reset to initial state
-    const store = useUIStore.getState();
-    store.resetSettings();
+    // Reset the whole store, not only the settings: viewport mode and the
+    // notification list otherwise leak from one test into the next.
+    useUIStore.setState(useUIStore.getInitialState(), true);
   });
 
   describe('Initial State', () => {

@@ -2,7 +2,7 @@
  * Integration tests for WASM module
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { useGraphStore } from '@/stores/useGraphStore';
 import type { OntologyData } from '@/types/ontology';
 

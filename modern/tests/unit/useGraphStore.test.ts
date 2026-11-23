@@ -2,10 +2,11 @@
  * Unit tests for useGraphStore
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useGraphStore } from '@/stores/useGraphStore';
 import type { Node, Edge, GraphFilter } from '@/types/graph';
 import type { OntologyData } from '@/types/ontology';
+import { OWL_THING_ID } from '@/lib/owl2vowl';
 
 describe('useGraphStore', () => {
   beforeEach(() => {
@@ -397,7 +398,7 @@ describe('useGraphStore', () => {
       expect(node?.label).toBe('Default Label');
     });
 
-    it('should skip edges with missing source or target', () => {
+    it('should attach a property with no domain or range to the synthesised owl:Thing node (VOWL default)', () => {
       const store = useGraphStore.getState();
       const ontologyData: OntologyData = {
         class: [
@@ -422,8 +423,27 @@ describe('useGraphStore', () => {
 
       store.loadOntology(ontologyData);
 
+      const { nodes, edges } = useGraphStore.getState();
+      expect(edges.size).toBe(1);
+      expect(edges.get('prop1')).toMatchObject({ source: OWL_THING_ID, target: OWL_THING_ID });
+      expect(nodes.get(OWL_THING_ID)?.label).toBe('Thing');
+      expect(nodes.size).toBe(2);
+    });
+
+    it('should drop an edge whose range names no node, keeping the rest', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      useGraphStore.getState().loadOntology({
+        class: [{ id: 'class1', type: 'owl:Class' }],
+        property: [
+          { id: 'ok', type: 'owl:ObjectProperty', domain: 'class1', range: 'class1' },
+          { id: 'dangling', type: 'owl:ObjectProperty', domain: 'class1', range: 'nowhere' }
+        ]
+      });
+
       const { edges } = useGraphStore.getState();
-      expect(edges.size).toBe(0);
+      expect([...edges.keys()]).toEqual(['ok']);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('dropped 1 record'), expect.anything());
+      warn.mockRestore();
     });
 
     it('should update statistics after loading', () => {

@@ -1,36 +1,35 @@
 /**
  * WASM simulation integration hook
+ *
+ * Owns one `WebVowl` engine from @dreamlab-ai/vowl-wasm. The engine is loaded
+ * from the store's normalised ontology (`ontology.engine`, the same object the
+ * store built its nodes and edges from) once per `graphVersion`, that is once
+ * per loaded file; simulation ticks only write positions back to the store
+ * and never reload or re-initialise the engine.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
+import type { WebVowl } from '@dreamlab-ai/vowl-wasm';
 import { useGraphStore } from '../stores/useGraphStore';
 import { useUIStore } from '../stores/useUIStore';
-
-// Will be dynamically imported
-type WebVowl = {
-  loadOntology(json: string): void;
-  setCenter(x: number, y: number): void;
-  setLinkDistance(distance: number): void;
-  setChargeStrength(strength: number): void;
-  initSimulation(): void;
-  tick(): void;
-  runSimulation(iterations: number): void;
-  isFinished(): boolean;
-  getAlpha(): number;
-  /** Node ids, in the same index order as getNodePositions(). Stable for the
-   *  lifetime of a loaded graph, so capture once after loadOntology(). */
-  getNodeIds(): string[];
-  /** Interleaved live positions: node i is at [2i], [2i + 1]. */
-  getNodePositions(): Float32Array;
-  getNodeCount(): number;
-  getEdgeCount(): number;
-  getStatistics(): any;
-};
+import { engineCounters, exposeDebugHandle } from '../lib/debugHandle';
 
 interface UseWasmSimulationOptions {
   autoStart?: boolean;
   iterations?: number;
+}
+
+/** wasm-bindgen errors arrive as plain strings, not Error objects. */
+function describeError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function sameIds(a: readonly string[], b: readonly string[]): boolean {
+  if (a.length !== b.length) return false;
+  const sa = [...a].sort();
+  const sb = [...b].sort();
+  return sa.every((v, i) => v === sb[i]);
 }
 
 export function useWasmSimulation(options: UseWasmSimulationOptions = {}) {
@@ -44,88 +43,122 @@ export function useWasmSimulation(options: UseWasmSimulationOptions = {}) {
   const [isRunning, setIsRunning] = useState(false);
   const [alpha, setAlpha] = useState(1.0);
 
-  const { nodes, edges, updateNodePosition } = useGraphStore();
-  const { settings } = useUIStore();
+  const graphVersion = useGraphStore((s) => s.graphVersion);
+  const updateNodePositions = useGraphStore((s) => s.updateNodePositions);
+  const linkDistance = useUIStore((s) => s.settings.linkDistance);
+  const chargeStrength = useUIStore((s) => s.settings.chargeStrength);
+  const addNotification = useUIStore((s) => s.addNotification);
+
+  /** loadOntology replaces the engine's simulation and with it any parameters
+   *  set before, so they are (re)applied after every load. */
+  const applySettings = useCallback((wasm: WebVowl) => {
+    const { settings } = useUIStore.getState();
+    wasm.setCenter(0, 0);
+    wasm.setLinkDistance(settings.linkDistance);
+    wasm.setChargeStrength(settings.chargeStrength);
+  }, []);
+
+  const pushPositions = useCallback((wasm: WebVowl) => {
+    updateNodePositions(nodeIdsRef.current, wasm.getNodePositions());
+  }, [updateNodePositions]);
 
   // Initialize WASM module
   useEffect(() => {
     let mounted = true;
+    let engine: WebVowl | null = null;
 
     async function initWasm() {
       try {
-        // Dynamically import WASM module
         const wasmModule = await import('@dreamlab-ai/vowl-wasm');
-        await wasmModule.default(); // Initialize WASM
-
+        await wasmModule.default();
         if (!mounted) return;
 
-        wasmRef.current = new wasmModule.WebVowl();
+        engine = new wasmModule.WebVowl();
+        wasmRef.current = engine;
         setIsInitialized(true);
-
-        // Configure simulation
-        wasmRef.current.setCenter(0, 0);
-        wasmRef.current.setLinkDistance(settings.linkDistance);
-        wasmRef.current.setChargeStrength(settings.chargeStrength);
-
       } catch (error) {
         console.error('Failed to initialize WASM:', error);
+        if (mounted) {
+          addNotification({
+            type: 'error',
+            message: `Layout engine failed to start: ${describeError(error)}`,
+            duration: 10000
+          });
+        }
       }
     }
 
     initWasm();
+    exposeDebugHandle({ graphStore: useGraphStore, uiStore: useUIStore });
 
     return () => {
       mounted = false;
-      if (wasmRef.current) {
-        wasmRef.current = null;
-      }
+      if (wasmRef.current === engine) wasmRef.current = null;
+      engine?.free();
     };
-  }, []);
+  }, [addNotification]);
 
-  // Load graph data when nodes/edges change
+  // Load the graph into the engine once per graphVersion (load or clear).
   useEffect(() => {
-    if (!wasmRef.current || !isInitialized) return;
-    if (nodes.size === 0) return;
+    const wasm = wasmRef.current;
+    if (!wasm || !isInitialized) return;
 
-    const graphData = {
-      nodes: Array.from(nodes.values()).map((n) => ({
-        id: n.id,
-        type: n.type,
-        label: n.label
-      })),
-      edges: Array.from(edges.values()).map((e) => ({
-        id: e.id,
-        source: e.source,
-        target: e.target,
-        type: e.type
-      }))
-    };
+    const { ontology, nodes } = useGraphStore.getState();
+    nodeIdsRef.current = [];
+    engineCounters.finished = false;
+    engineCounters.ticks = 0;
+    if (!ontology || ontology.engine.class.length === 0) {
+      setIsRunning(false);
+      return;
+    }
 
     try {
-      wasmRef.current.loadOntology(JSON.stringify(graphData));
-      nodeIdsRef.current = wasmRef.current.getNodeIds();
-      wasmRef.current.initSimulation();
+      wasm.loadOntology(JSON.stringify(ontology.engine));
+      engineCounters.loadOntology++;
+
+      const engineIds = wasm.getNodeIds();
+      const storeIds = [...nodes.keys()];
+      if (!sameIds(engineIds, storeIds)) {
+        throw new Error(
+          `engine and store disagree on the node set (${engineIds.length} engine nodes, ${storeIds.length} store nodes)`
+        );
+      }
+      nodeIdsRef.current = engineIds;
+
+      applySettings(wasm);
+      wasm.initSimulation();
+      engineCounters.initSimulation++;
+      // Show the seeded layout at once rather than every node at the origin.
+      pushPositions(wasm);
+      setAlpha(wasm.getAlpha());
 
       if (autoStart) {
         if (iterations) {
-          wasmRef.current.runSimulation(iterations);
-          setIsRunning(false); // Will be animated frame-by-frame
+          wasm.runSimulation(iterations);
+          pushPositions(wasm);
+          setIsRunning(false);
         } else {
           setIsRunning(true);
         }
       }
     } catch (error) {
       console.error('Failed to load ontology into WASM:', error);
+      setIsRunning(false);
+      addNotification({
+        type: 'error',
+        message: `Layout engine could not load this ontology: ${describeError(error)}`,
+        duration: 10000
+      });
     }
-  }, [nodes, edges, isInitialized, autoStart, iterations]);
+  }, [graphVersion, isInitialized, autoStart, iterations, applySettings, pushPositions, addNotification]);
 
   // Update simulation parameters when settings change
   useEffect(() => {
-    if (!wasmRef.current) return;
-
-    wasmRef.current.setLinkDistance(settings.linkDistance);
-    wasmRef.current.setChargeStrength(settings.chargeStrength);
-  }, [settings.linkDistance, settings.chargeStrength]);
+    const wasm = wasmRef.current;
+    if (!wasm) return;
+    wasm.setLinkDistance(linkDistance);
+    wasm.setChargeStrength(chargeStrength);
+  }, [linkDistance, chargeStrength]);
 
   // Run simulation tick on each frame
   useFrame(() => {
@@ -133,29 +166,31 @@ export function useWasmSimulation(options: UseWasmSimulationOptions = {}) {
     if (!wasm || !isRunning) return;
 
     try {
-      // Check if simulation is finished
       if (wasm.isFinished()) {
+        engineCounters.finished = true;
+        engineCounters.alpha = wasm.getAlpha();
         setIsRunning(false);
         setAlpha(0);
         return;
       }
 
-      // Perform one tick
       wasm.tick();
+      engineCounters.ticks++;
 
-      // Get updated alpha
       const currentAlpha = wasm.getAlpha();
+      engineCounters.alpha = currentAlpha;
       setAlpha(currentAlpha);
 
-      // Get updated positions and update React state
-      const positions = wasm.getNodePositions();
-      const ids = nodeIdsRef.current;
-      for (let i = 0; i < ids.length; i++) {
-        updateNodePosition(ids[i], [positions[2 * i], positions[2 * i + 1], 0]);
-      }
+      // One store update for the whole frame.
+      pushPositions(wasm);
     } catch (error) {
       console.error('Simulation tick error:', error);
       setIsRunning(false);
+      addNotification({
+        type: 'error',
+        message: `Layout simulation stopped: ${describeError(error)}`,
+        duration: 10000
+      });
     }
   });
 
@@ -171,8 +206,12 @@ export function useWasmSimulation(options: UseWasmSimulationOptions = {}) {
   };
 
   const reset = () => {
-    if (wasmRef.current) {
-      wasmRef.current.initSimulation();
+    const wasm = wasmRef.current;
+    if (wasm && nodeIdsRef.current.length > 0) {
+      wasm.initSimulation();
+      engineCounters.initSimulation++;
+      engineCounters.finished = false;
+      pushPositions(wasm);
       setAlpha(1.0);
       if (autoStart) {
         setIsRunning(true);
@@ -181,16 +220,11 @@ export function useWasmSimulation(options: UseWasmSimulationOptions = {}) {
   };
 
   const step = () => {
-    if (wasmRef.current && !isRunning) {
-      wasmRef.current.tick();
-
-      const positions = wasmRef.current.getNodePositions();
-      const ids = nodeIdsRef.current;
-      for (let i = 0; i < ids.length; i++) {
-        updateNodePosition(ids[i], [positions[2 * i], positions[2 * i + 1], 0]);
-      }
-
-      setAlpha(wasmRef.current.getAlpha());
+    const wasm = wasmRef.current;
+    if (wasm && !isRunning && nodeIdsRef.current.length > 0) {
+      wasm.tick();
+      pushPositions(wasm);
+      setAlpha(wasm.getAlpha());
     }
   };
 

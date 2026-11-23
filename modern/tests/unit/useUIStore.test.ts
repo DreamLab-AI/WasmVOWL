@@ -3,6 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
+import { RECOMMENDED_LAYOUT_PARAMS } from '@dreamlab-ai/ontomark-graph/layout';
 import { useUIStore } from '@/stores/useUIStore';
 import type { GraphSettings } from '@/types/ui';
 
@@ -26,11 +27,9 @@ describe('useUIStore', () => {
       expect(viewport.target).toEqual([0, 0, 0]);
     });
 
-    it('should have default settings', () => {
+    it('defaults the layout to the engine charge and link distance with the recommended readability parameters, collision radius 23 for the bordered 20-unit discs', () => {
       const { settings } = useUIStore.getState();
-      expect(settings.linkDistance).toBeDefined();
-      expect(settings.chargeStrength).toBeDefined();
-      expect(settings.gravity).toBeDefined();
+      expect(settings.layout).toEqual({ charge: 2000, linkDistance: 60, ...RECOMMENDED_LAYOUT_PARAMS, collideRadius: 23 });
     });
 
     it('should have zero loading progress initially', () => {
@@ -116,41 +115,33 @@ describe('useUIStore', () => {
   describe('Settings Operations', () => {
     it('should update settings', () => {
       const store = useUIStore.getState();
-      store.updateSettings({ linkDistance: 150 });
-
-      const { settings } = useUIStore.getState();
-      expect(settings.linkDistance).toBe(150);
-    });
-
-    it('should update multiple settings', () => {
-      const store = useUIStore.getState();
-      const updates: Partial<GraphSettings> = {
-        linkDistance: 150,
-        chargeStrength: -500,
-        gravity: 0.2
-      };
-
+      const updates: Partial<GraphSettings> = { nodeScale: 1.5, showLabels: false };
       store.updateSettings(updates);
 
       const { settings } = useUIStore.getState();
-      expect(settings.linkDistance).toBe(150);
-      expect(settings.chargeStrength).toBe(-500);
-      expect(settings.gravity).toBe(0.2);
+      expect(settings.nodeScale).toBe(1.5);
+      expect(settings.showLabels).toBe(false);
     });
 
-    it('should reset settings to defaults', () => {
+    it('merges layout parameters over the current ones', () => {
       const store = useUIStore.getState();
+      store.updateLayout({ linkDistance: 90 });
+      store.updateLayout({ collideRadius: 14 });
 
-      // Modify settings
-      store.updateSettings({ linkDistance: 250, chargeStrength: -1000 });
+      const { layout } = useUIStore.getState().settings;
+      expect(layout).toMatchObject({ linkDistance: 90, collideRadius: 14, charge: 2000 });
+    });
 
-      // Reset
+    it('should reset settings, layout included, to defaults', () => {
+      const store = useUIStore.getState();
+      store.updateLayout({ linkDistance: 250, charge: 500 });
+      store.updateSettings({ nodeScale: 2 });
+
       store.resetSettings();
 
       const { settings } = useUIStore.getState();
-      // Settings should be reset to defaults
-      expect(settings.linkDistance).toBe(100);
-      expect(settings.chargeStrength).toBe(-300);
+      expect(settings.nodeScale).toBe(1);
+      expect(settings.layout).toEqual({ charge: 2000, linkDistance: 60, ...RECOMMENDED_LAYOUT_PARAMS, collideRadius: 23 });
     });
   });
 

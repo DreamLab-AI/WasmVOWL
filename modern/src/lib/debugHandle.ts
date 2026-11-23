@@ -2,8 +2,8 @@
  * Opt-in diagnostics for driving the explorer from a browser automation
  * session. Development builds only (`import.meta.env.DEV`, as under the
  * `vite` dev server), and then only when the page URL carries `?debug` (any
- * value): `window.__wasmvowl` exposes the graph and UI stores and the number
- * of engine loads and simulation initialisations, so a test can read node
+ * value): `window.__wasmvowl` exposes the graph and UI stores, the number
+ * of engine loads and whether the layout has settled, so a test can read node
  * positions and check that the engine is loaded once per file rather than
  * once per frame. A production build replaces
  * `import.meta.env.DEV` with `false`, so the handle and its name are dropped
@@ -11,24 +11,18 @@
  */
 
 export interface EngineCounters {
-  /** Calls to WebVowl.loadOntology. */
-  loadOntology: number;
-  /** Calls to WebVowl.initSimulation. */
-  initSimulation: number;
-  /** Simulation ticks driven by the frame loop. */
-  ticks: number;
-  /** Last engine alpha seen by the frame loop. */
-  alpha: number;
-  /** True once the engine reported isFinished() for the current graph. */
-  finished: boolean;
+  /** Graphs loaded into the NggExplorer (cumulative, one per opened file). */
+  loads: number;
+  /** Position snapshots written to the store for the current graph. */
+  snapshots: number;
+  /** True once the layout of the current graph settled. */
+  settled: boolean;
 }
 
 export const engineCounters: EngineCounters = {
-  loadOntology: 0,
-  initSimulation: 0,
-  ticks: 0,
-  alpha: 1,
-  finished: false
+  loads: 0,
+  snapshots: 0,
+  settled: false
 };
 
 export function debugEnabled(): boolean {

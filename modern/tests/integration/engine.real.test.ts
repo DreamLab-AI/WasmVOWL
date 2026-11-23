@@ -1,21 +1,30 @@
 // @vitest-environment node
 /**
  * Real-engine tests: the pinned @dreamlab-ai/vowl-wasm build, loaded from its
- * own .wasm bytes, fed by the owl2vowl normaliser with all nine legacy
- * ontologies. No mock is involved, so a schema mismatch between the
- * normaliser and the engine fails here as an engine load error.
+ * own .wasm bytes, laid out through @dreamlab-ai/ontomark-graph's driver
+ * (`createLayout(vowlEngine(mod))`, the same path the hook takes) and fed by
+ * the owl2vowl normaliser with all nine legacy ontologies. Nothing is mocked:
+ * a mapping the driver rejects fails here as a layout error.
  *
  * Expected counts are hand-derived from the files (classes + datatypes,
- * properties + generated set-operator edges), not read back from the engine;
- * foaf's 56 / 74 was also measured independently before this change.
+ * properties + generated set-operator edges), not read back from the engine.
  */
 
 import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { initSync, WebVowl } from '@dreamlab-ai/vowl-wasm';
+import * as vowl from '@dreamlab-ai/vowl-wasm';
+import {
+  RECOMMENDED_LAYOUT_PARAMS,
+  createLayout,
+  layoutInput,
+  vowlEngine,
+  type LayoutParams
+} from '@dreamlab-ai/ontomark-graph/layout';
+import type { GraphData } from '@dreamlab-ai/ontomark-graph';
 import { normaliseOwl2Vowl } from '@/lib/owl2vowl';
+import { toLayoutGraph } from '@/lib/layoutGraph';
 import { useGraphStore } from '@/stores/useGraphStore';
 import { useUIStore } from '@/stores/useUIStore';
 
@@ -41,14 +50,21 @@ const EXPECTED: Record<string, [number, number]> = {
 };
 
 const FILES = Object.keys(EXPECTED);
-
-/** The engine seeds nodes on a circle of this radius (LayoutConfig::default). */
-const SEED_RADIUS = 300;
 const MAX_TICKS = 2000;
 
-/** The settings the hook applies: useUIStore's defaults, read rather than
+/** The parameters the hook applies: useUIStore's defaults, read rather than
  *  copied so the test cannot drift from the app. */
-const { linkDistance: LINK_DISTANCE, chargeStrength: CHARGE_STRENGTH } = useUIStore.getState().settings;
+const LAYOUT: LayoutParams = useUIStore.getState().settings.layout;
+const LINK_DISTANCE = useUIStore.getState().settings.layout.linkDistance;
+/** WasmVOWL's collision radius: 23, above the recommended 21, because its
+ *  discs are radius 20 plus a 2-unit border (see useUIStore's defaultLayout). */
+const COLLIDE_RADIUS = 23;
+/** collideStrength 0.7 resolves 70% of an overlap per pass, so the floor
+ *  (2 x 23 - 1 = 45) is approached, not met exactly. Measured minimum pair
+ *  distance 45.12 (goodrelations) to 46.00 (muto); with collision off the same
+ *  graphs settle with pairs 4.9 to 33.3 apart, so this tolerance still tells
+ *  them apart. */
+const COLLIDE_TOLERANCE = 1;
 
 /** A layout that ever leaves this box (per axis) has diverged. It scales with
  *  the graph, as a settled force layout's extent does. */
@@ -56,40 +72,70 @@ function boundFor(nodeCount: number): number {
   return 10 * LINK_DISTANCE * Math.sqrt(nodeCount);
 }
 
-function configure(engine: WebVowl): void {
-  engine.setCenter(0, 0);
-  engine.setLinkDistance(LINK_DISTANCE);
-  engine.setChargeStrength(CHARGE_STRENGTH);
-}
-
 interface LayoutRun {
+  loads: number;
   ticks: number;
-  /** Largest |coordinate| seen on any tick. */
+  settled: boolean;
+  errors: Error[];
+  ignored: string[];
+  supported: readonly string[];
+  /** Largest |coordinate| in any snapshot. */
   peak: number;
   /** Largest single-node displacement on the last tick. */
   lastStep: number;
   allFinite: boolean;
+  positions: Float32Array;
 }
 
-/** Tick to isFinished (or MAX_TICKS), tracking the peak, finiteness and the
- *  final per-tick motion. */
-function runLayout(engine: WebVowl): LayoutRun {
-  let prev = engine.getNodePositions();
-  let peak = 0;
-  let lastStep = 0;
-  let allFinite = true;
-  const ticks = runToFinish(engine, (pos) => {
-    lastStep = 0;
-    for (let i = 0; i < pos.length; i++) {
-      if (!Number.isFinite(pos[i])) allFinite = false;
-      peak = Math.max(peak, Math.abs(pos[i]));
+/**
+ * Drive the real engine through the ontomark-graph driver one tick per slice
+ * (so every tick is observed) with a manual scheduler, until it settles or
+ * MAX_TICKS. The engine is wrapped only to count loads and ticks.
+ */
+function runLayout(graph: GraphData, params: LayoutParams = LAYOUT): LayoutRun {
+  const base = vowlEngine(vowl);
+  const run: LayoutRun = {
+    loads: 0, ticks: 0, settled: false, errors: [], ignored: [], supported: base.supportedParams,
+    peak: 0, lastStep: 0, allFinite: true, positions: new Float32Array(0)
+  };
+  const engine = {
+    ...base,
+    load(input: Parameters<typeof base.load>[0]) { run.loads++; base.load(input); },
+    tick() { run.ticks++; base.tick(); }
+  };
+  const queue: Array<() => void> = [];
+  let prev: Float32Array | null = null;
+  const layout = createLayout(engine, {
+    params,
+    maxTicksPerFrame: 1,
+    now: () => 0,
+    schedule: (fn) => queue.push(fn),
+    cancel: () => {},
+    onIgnoredParams: (keys) => run.ignored.push(...keys),
+    onError: (error) => run.errors.push(error),
+    onSettled: () => { run.settled = true; },
+    onPositions: (xy) => {
+      run.lastStep = 0;
+      for (let i = 0; i < xy.length; i++) {
+        if (!Number.isFinite(xy[i])) run.allFinite = false;
+        run.peak = Math.max(run.peak, Math.abs(xy[i]));
+      }
+      if (prev) {
+        for (let i = 0; i < xy.length; i += 2) {
+          run.lastStep = Math.max(run.lastStep, Math.hypot(xy[i] - prev[i], xy[i + 1] - prev[i + 1]));
+        }
+      }
+      prev = xy.slice();
     }
-    for (let i = 0; i < pos.length; i += 2) {
-      lastStep = Math.max(lastStep, Math.hypot(pos[i] - prev[i], pos[i + 1] - prev[i + 1]));
-    }
-    prev = pos;
   });
-  return { ticks, peak, lastStep, allFinite };
+  try {
+    layout.setGraph(graph);
+    while (queue.length > 0 && run.ticks < MAX_TICKS) queue.shift()!();
+    run.positions = layout.positions();
+  } finally {
+    layout.destroy();
+  }
+  return run;
 }
 
 function minPairDistance(pos: Float32Array): number {
@@ -100,16 +146,6 @@ function minPairDistance(pos: Float32Array): number {
     }
   }
   return min;
-}
-
-function runToFinish(engine: WebVowl, onTick?: (pos: Float32Array) => void): number {
-  let ticks = 0;
-  while (!engine.isFinished() && ticks < MAX_TICKS) {
-    engine.tick();
-    ticks++;
-    onTick?.(engine.getNodePositions());
-  }
-  return ticks;
 }
 
 function expectDistinctAndSpread(pos: Float32Array, count: number, minExtent: number): void {
@@ -130,10 +166,27 @@ function expectDistinctAndSpread(pos: Float32Array, count: number, minExtent: nu
 
 beforeAll(() => {
   const wasmPath = path.join(modernRoot, 'node_modules/@dreamlab-ai/vowl-wasm/vowl_wasm_bg.wasm');
-  initSync({ module: readFileSync(wasmPath) });
+  vowl.initSync({ module: readFileSync(wasmPath) });
 });
 
-describe('the nine legacy ontologies through the normaliser into the real engine', () => {
+describe('the pinned engine and the app settings', () => {
+  it('is vowl-wasm 0.4.0, which takes every layout setting the app sends', () => {
+    expect(vowl.version()).toBe('0.4.0');
+    const engine = vowlEngine(vowl);
+    try {
+      for (const key of Object.keys(LAYOUT)) expect(engine.supportedParams).toContain(key);
+      expect(engine.setParams(LAYOUT)).toEqual({ applied: Object.keys(LAYOUT), ignored: [] });
+    } finally {
+      engine.dispose?.();
+    }
+  });
+
+  it('defaults to RECOMMENDED_LAYOUT_PARAMS on top of the engine defaults, with collision radius 23', () => {
+    expect(LAYOUT).toEqual({ charge: 2000, linkDistance: 60, ...RECOMMENDED_LAYOUT_PARAMS, collideRadius: COLLIDE_RADIUS });
+  });
+});
+
+describe('the nine legacy ontologies through the normaliser into the real layout', () => {
   it('covers every file in legacy/src/app/data', () => {
     const onDisk = readdirSync(dataDir).filter((f) => f.endsWith('.json')).sort();
     expect(onDisk).toEqual([...FILES].sort());
@@ -142,20 +195,12 @@ describe('the nine legacy ontologies through the normaliser into the real engine
   describe.each(FILES)('%s', (file) => {
     const [expectedNodes, expectedEdges] = EXPECTED[file];
 
-    it('loads without an engine error, with the expected node and edge counts', () => {
+    it('normalises to the expected node and edge counts with nothing dropped', () => {
       const n = normaliseOwl2Vowl(readOntology(file));
-      const engine = new WebVowl();
-      try {
-        expect(() => engine.loadOntology(JSON.stringify(n.engine))).not.toThrow();
-        expect(engine.getNodeCount()).toBe(expectedNodes);
-        expect(engine.getEdgeCount()).toBe(expectedEdges);
-        expect(n.engine.class).toHaveLength(expectedNodes);
-        expect(n.engine.property).toHaveLength(expectedEdges);
-        // Nothing in the real corpus needs dropping.
-        expect(n.report.dropped.filter((d) => d.id !== '')).toEqual([]);
-      } finally {
-        engine.free();
-      }
+      expect(n.nodes).toHaveLength(expectedNodes);
+      expect(n.edges).toHaveLength(expectedEdges);
+      // Nothing in the real corpus needs dropping.
+      expect(n.report.dropped.filter((d) => d.id !== '')).toEqual([]);
     });
 
     it('never labels a node with a bare owl2vowl numeric id', () => {
@@ -167,73 +212,49 @@ describe('the nine legacy ontologies through the normaliser into the real engine
       expect(bare).toEqual([]);
     });
 
-    it('builds the store graph from the same object, with node ids equal to the engine ids', () => {
+    it('maps the store graph onto layout indices in store order, every edge a spring', () => {
       useGraphStore.getState().clear();
-      const doc = readOntology(file);
-      useGraphStore.getState().loadOntology(doc);
+      useGraphStore.getState().loadOntology(readOntology(file));
       const { nodes, edges, ontology } = useGraphStore.getState();
+      const { graph, ids } = toLayoutGraph(ontology!);
 
-      const engine = new WebVowl();
-      try {
-        engine.loadOntology(JSON.stringify(ontology!.engine));
-        expect([...engine.getNodeIds()].sort()).toEqual([...nodes.keys()].sort());
-        expect(nodes.size).toBe(expectedNodes);
-        expect(edges.size).toBe(expectedEdges);
-        // Every edge has both endpoints in the graph, so every edge can render.
-        for (const e of edges.values()) {
-          expect(nodes.has(e.source) && nodes.has(e.target)).toBe(true);
-        }
-      } finally {
-        engine.free();
+      // Index i of the layout is the i-th store node: positions come back in this order.
+      expect(ids).toEqual([...nodes.keys()]);
+      expect(graph.nodes.map((v) => v.id)).toEqual(ids);
+      expect(nodes.size).toBe(expectedNodes);
+      expect(graph.edges).toHaveLength(expectedEdges);
+      expect(edges.size).toBe(expectedEdges);
+
+      // The driver accepts the graph; its springs are the store edges minus
+      // self-loops, with repeated and reversed pairs merged.
+      const input = layoutInput(graph);
+      const pairs = new Set<string>();
+      for (const e of graph.edges) {
+        if (e.source === e.target) continue;
+        pairs.add([e.source, e.target].sort().join('\u0000'));
       }
+      expect(input.count).toBe(expectedNodes);
+      expect(input.edgeA.length).toBe(pairs.size);
     });
 
-    it.skipIf(expectedNodes < 2)('seeds distinct positions off the origin and reaches isFinished', () => {
+    it.skipIf(expectedNodes < 2)('loads once and settles bounded, finite, collision-spaced and still', () => {
       const n = normaliseOwl2Vowl(readOntology(file));
-      const engine = new WebVowl();
-      try {
-        engine.loadOntology(JSON.stringify(n.engine));
-        // Since 0.3.0 loadOntology keeps settings made before it; the hook
-        // still applies them after each load, and so does this test.
-        configure(engine);
-        engine.initSimulation();
+      const run = runLayout(toLayoutGraph(n).graph);
 
-        const seed = engine.getNodePositions();
-        expect(seed.length).toBe(expectedNodes * 2);
-        expectDistinctAndSpread(seed, expectedNodes, 2 * SEED_RADIUS * 0.9);
-
-        const ticks = runToFinish(engine);
-        expect(engine.isFinished()).toBe(true);
-        expect(ticks).toBeLessThan(MAX_TICKS);
-      } finally {
-        engine.free();
-      }
-    });
-
-    // vowl-wasm 0.2.3 diverged here (peaks of 1e7 and beyond; ADR-001
-    // closeout 2026-11-23). 0.3.0 fixed the force simulation, and this is the
-    // inverted assertion: bounded, finite, no coincident nodes, settled.
-    it.skipIf(expectedNodes < 2)('lays out bounded, finite, without coincident nodes, and settles', () => {
-      const n = normaliseOwl2Vowl(readOntology(file));
-      const engine = new WebVowl();
-      try {
-        engine.loadOntology(JSON.stringify(n.engine));
-        configure(engine);
-        engine.initSimulation();
-        const run = runLayout(engine);
-
-        expect(engine.isFinished()).toBe(true);
-        expect(run.ticks).toBeLessThan(MAX_TICKS);
-        expect(run.allFinite).toBe(true);
-        expect(run.peak).toBeLessThan(boundFor(expectedNodes));
-        // Measured 9.4 to 31 across the corpus; 1 unit means two nodes drawn
-        // on top of each other.
-        expect(minPairDistance(engine.getNodePositions())).toBeGreaterThan(1);
-        // Measured at most 0.006 on the last tick.
-        expect(run.lastStep).toBeLessThan(0.05 * LINK_DISTANCE);
-      } finally {
-        engine.free();
-      }
+      expect(run.errors).toEqual([]);
+      expect(run.ignored).toEqual([]);
+      expect(run.loads).toBe(1);
+      expect(run.settled).toBe(true);
+      expect(run.ticks).toBeLessThan(MAX_TICKS);
+      expect(run.positions.length).toBe(expectedNodes * 2);
+      expect(run.allFinite).toBe(true);
+      // Peaks measured at 108 to 308, under 5% of the bound.
+      expect(run.peak).toBeLessThan(boundFor(expectedNodes));
+      // Collision keeps every pair two radii apart, give or take what one
+      // 0.7-strength pass leaves.
+      expect(minPairDistance(run.positions)).toBeGreaterThanOrEqual(2 * COLLIDE_RADIUS - COLLIDE_TOLERANCE);
+      // Measured at most 0.083 (goodrelations) on the last tick.
+      expect(run.lastStep).toBeLessThan(0.05 * LINK_DISTANCE);
     });
   });
 });
@@ -246,44 +267,33 @@ describe('the sample ontologies behind the drop zone buttons (public/ontologies)
     expect(samples).toEqual(['foaf.json', 'minimal.json', 'sioc.json']);
   });
 
-  it.each(samples)('%s loads into the engine with the normaliser\'s counts and nothing dropped', (file) => {
+  it.each(samples)('%s lays out with the normaliser\'s node count and nothing dropped', (file) => {
     const n = normaliseOwl2Vowl(JSON.parse(readFileSync(path.join(publicDir, file), 'utf8')));
-    const engine = new WebVowl();
-    try {
-      expect(() => engine.loadOntology(JSON.stringify(n.engine))).not.toThrow();
-      expect(engine.getNodeCount()).toBe(n.nodes.length);
-      expect(engine.getEdgeCount()).toBe(n.edges.length);
-      expect(n.nodes.length).toBeGreaterThan(0);
-      expect(n.report.dropped).toEqual([]);
-    } finally {
-      engine.free();
-    }
+    expect(n.nodes.length).toBeGreaterThan(0);
+    expect(n.report.dropped).toEqual([]);
+    const run = runLayout(toLayoutGraph(n).graph);
+    expect(run.errors).toEqual([]);
+    expect(run.loads).toBe(1);
+    expect(run.settled).toBe(true);
+    expect(run.positions.length).toBe(n.nodes.length * 2);
   });
 });
 
 describe('the layout oracle on a hub-free graph', () => {
-  // Control for the corpus assertions above: a chain (out-degree 1
-  // everywhere) has no hubs, so it isolates the oracle itself. It also passed
-  // on 0.2.3, which diverged only on graphs with hubs.
-  it('a 12-node chain stays within the bound, spread, with no coincident nodes', () => {
+  // Control for the corpus assertions above: a chain (degree at most 2) has
+  // no hubs, so it isolates the oracle itself from hub-driven behaviour.
+  it('a 12-node chain settles within the bound, spread, with no coincident nodes', () => {
     const ids = Array.from({ length: 12 }, (_, i) => `c${i}`);
     const n = normaliseOwl2Vowl({
       class: ids.map((id) => ({ id, type: 'owl:Class' })),
       property: ids.slice(1).map((id, i) => ({ id: `p${i}`, type: 'owl:ObjectProperty', domain: ids[i], range: id }))
     });
-    const engine = new WebVowl();
-    try {
-      engine.loadOntology(JSON.stringify(n.engine));
-      configure(engine);
-      engine.initSimulation();
-      const run = runLayout(engine);
-      expect(engine.isFinished()).toBe(true);
-      expect(run.allFinite).toBe(true);
-      expect(run.peak).toBeLessThan(boundFor(ids.length));
-      expectDistinctAndSpread(engine.getNodePositions(), ids.length, 100);
-    } finally {
-      engine.free();
-    }
+    const run = runLayout(toLayoutGraph(n).graph);
+    expect(run.errors).toEqual([]);
+    expect(run.settled).toBe(true);
+    expect(run.allFinite).toBe(true);
+    expect(run.peak).toBeLessThan(boundFor(ids.length));
+    expectDistinctAndSpread(run.positions, ids.length, 100);
   });
 });
 
@@ -292,32 +302,39 @@ describe('position updates do not reset the graph', () => {
     useGraphStore.getState().clear();
   });
 
-  it('bumps graphVersion only on load and clear', () => {
+  it('bumps graphVersion only on load and clear, and the store holds the layout positions', () => {
     const v0 = useGraphStore.getState().graphVersion;
     useGraphStore.getState().loadOntology(readOntology('foaf.json'));
     const v1 = useGraphStore.getState().graphVersion;
     expect(v1).toBe(v0 + 1);
 
-    const { ontology } = useGraphStore.getState();
-    const engine = new WebVowl();
-    try {
-      engine.loadOntology(JSON.stringify(ontology!.engine));
-      engine.initSimulation();
-      const ids = engine.getNodeIds();
-      for (let i = 0; i < 30; i++) {
-        engine.tick();
-        useGraphStore.getState().updateNodePositions(ids, engine.getNodePositions());
+    const { graph, ids } = toLayoutGraph(useGraphStore.getState().ontology!);
+    const queue: Array<() => void> = [];
+    let last = new Float32Array(0);
+    const layout = createLayout(vowlEngine(vowl), {
+      params: LAYOUT,
+      maxTicksPerFrame: 1,
+      now: () => 0,
+      schedule: (fn) => queue.push(fn),
+      cancel: () => {},
+      onPositions: (xy) => {
+        useGraphStore.getState().updateNodePositions(ids, xy);
+        last = xy.slice();
       }
-      expect(useGraphStore.getState().graphVersion).toBe(v1);
-
-      // The store really holds the engine's positions.
-      const pos = engine.getNodePositions();
-      const n0 = useGraphStore.getState().nodes.get(ids[0])!;
-      expect(n0.position.x).toBeCloseTo(pos[0], 3);
-      expect(n0.position.y).toBeCloseTo(pos[1], 3);
+    });
+    try {
+      layout.setGraph(graph);
+      for (let i = 0; i < 30 && queue.length > 0; i++) queue.shift()!();
     } finally {
-      engine.free();
+      layout.destroy();
     }
+    expect(useGraphStore.getState().graphVersion).toBe(v1);
+
+    const n0 = useGraphStore.getState().nodes.get(ids[0])!;
+    expect(n0.position.x).toBeCloseTo(last[0], 3);
+    expect(n0.position.y).toBeCloseTo(last[1], 3);
+    const nLast = useGraphStore.getState().nodes.get(ids[ids.length - 1])!;
+    expect(nLast.position.x).toBeCloseTo(last[2 * ids.length - 2], 3);
 
     useGraphStore.getState().clear();
     expect(useGraphStore.getState().graphVersion).toBe(v1 + 1);

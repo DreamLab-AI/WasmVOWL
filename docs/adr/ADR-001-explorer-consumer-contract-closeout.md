@@ -94,7 +94,7 @@ The 12-node chain stays as the hub-free control. Measured peaks over the whole r
 **Charge setting kept at −300.** The Node sweep covered link distance 100 and 150 against charge −30, −300 and −1000.
 
 - Against the engine default of −30, −300 roughly halves the overlapping pairs on every file and doubles the minimum separation.
-- Going on to −1000 cuts overlapping pairs by a further 30–60% (goodrelations 536 → 305).
+- Going on to −1000 cuts overlapping pairs by a further 33–68% on six files (goodrelations 536 → 305); on muto they go from 2 to 0.
 - The cost of −1000 is larger graphs:
   - foaf's peak goes from 366 to 602;
   - at link distance 150, one ontovibe node went to 1494.
@@ -105,14 +105,29 @@ Since −1000 does not make the dense case readable and pushes the sparse ones f
 **Disconnected components.**
 
 - 0.3.0 does not attract separate components towards each other: d3 `forceCenter` moves only the centroid. So small components stay near the initial 300-unit seed circle while the main component contracts inside it (foaf: main component radius 220, eleven small components at 82 to 380 from the centre; goodrelations: 141-node component radius 191, its 4-, 1- and 1-node components at 285 to 383).
-- In the UI they appear as isolated nodes or tiny clusters ringing the main graph. Examples:
-  - foaf: `LabelProperty` on the left; `Person`, `Image`, `Agent` and `Class` below and to the right;
-  - goodrelations: the `productID`/`name`/`description` cluster on the right, and the deprecated "N-ary relations" and "Location of sales or service provisioning" classes on the left.
+- In the UI they appear as isolated nodes or tiny clusters ringing the main graph. The singletons below come from a union-find over the normalised edges; their screen placement was read off the screenshots.
+  - foaf: `LabelProperty` on the left; `Person` (twice), `ImageObject` and `Agent` below; `Class` to the right; `CreativeWork` above;
+  - goodrelations: a `Thing` with three `Literal`s (the `productID`/`name`/`description` properties) on the right, and the deprecated "N-ary relations" and "Location of sales or service provisioning" classes on the left.
 - This is the known limitation reported by the vowl-wasm agent. It reads as "not connected" rather than as an error.
 
 **Debug hook.** `window.__wasmvowl` is now installed only when `import.meta.env.DEV` is true, and then only with `?debug`. The production bundle contains no `__wasmvowl` string and no `?debug` check (grep of `dist/assets/*.js`). A dev server started from a shell that exports `NODE_ENV=production` reports `DEV: false`, so the browser run above set `NODE_ENV=development`.
 
-Screenshots and the position JSON are kept outside the repo, in the agent session's scratch directory (`browser-evidence-030/`: foaf, goodrelations at −300 and −1000, and sioc, each settled at the default camera and zoomed out).
+**Production preview smoke.** `vite build` output served by `vite preview` on 0.0.0.0, with foaf and sioc dropped the same way:
+
+- each `.wasm` request (`assets/vowl_wasm_bg-lQVkJm7H.wasm`) returned HTTP 200;
+- the header showed 56 / 74 and 49 / 125;
+- `window.__wasmvowl` was undefined even with `?debug`;
+- no console errors;
+- the settled layouts look the same as the dev-server runs (the engine is deterministic for a given graph and settings).
+
+goodrelations was not repeated on the preview.
+
+Screenshots and the position JSON are kept outside the repo, in the agent session's scratch directory (`browser-evidence-030/`):
+
+- foaf and sioc, each settled at the default camera and zoomed out;
+- goodrelations at −300 zoomed out only (the default-camera capture failed);
+- goodrelations at −1000 at the default camera and zoomed out;
+- the preview's foaf and sioc, zoomed out.
 
 Stays open:
 

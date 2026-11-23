@@ -1,0 +1,56 @@
+name: CI
+
+# The modern explorer (React + vowl-wasm) in modern/: install from the lock,
+# lint, type-check, test and build. Replaces the retired .travis.yml, which ran
+# Node 4-6 and `grunt jshint` against a Gruntfile the root no longer has.
+# Deployment is deliberately not here.
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  modern:
+    name: modern (lint, type-check, test, build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: modern
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: modern/package-lock.json
+      - name: Install (lockfile only)
+        run: npm ci --no-audit --no-fund
+      - name: Lint
+        run: npm run lint
+      - name: Type-check
+        run: npm run type-check
+      - name: Test
+        run: npm test
+      - name: Build
+        run: npm run build
+
+  root-surface:
+    name: root surface checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+      - name: Root build-surface guards
+        run: node --test checks/root-surface.test.mjs

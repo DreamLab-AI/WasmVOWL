@@ -3,11 +3,13 @@
  */
 
 import { create } from 'zustand';
-import type { UIState, Notification, ViewportState, GraphSettings } from '../types/ui';
+import type { UIState, Notification, ViewportState, GraphSettings, CameraRequest } from '../types/ui';
 
 interface UIStore extends UIState {
   viewport: ViewportState;
   settings: GraphSettings;
+  /** Latest camera instruction for `CameraController`; null until the first. */
+  cameraRequest: CameraRequest | null;
 
   // Actions
   toggleSidebar: () => void;
@@ -22,6 +24,10 @@ interface UIStore extends UIState {
   setRotation: (rotation: [number, number, number]) => void;
   setTarget: (target: [number, number, number]) => void;
   toggleViewMode: () => void;
+  /** Move the camera towards (factor > 1) or away from (factor < 1) its target. */
+  zoomCamera: (factor: number) => void;
+  /** Frame the whole graph; `resetDirection` also returns to the default view angle. */
+  fitCamera: (options?: { resetDirection?: boolean }) => void;
 
   // Settings
   updateSettings: (settings: Partial<GraphSettings>) => void;
@@ -60,6 +66,8 @@ export const useUIStore = create<UIStore>((set) => ({
   },
 
   settings: defaultSettings,
+
+  cameraRequest: null,
 
   // Actions
   toggleSidebar: () => set((state) => ({
@@ -114,6 +122,18 @@ export const useUIStore = create<UIStore>((set) => ({
     viewport: {
       ...state.viewport,
       mode: state.viewport.mode === '2d' ? '3d' : '2d'
+    }
+  })),
+
+  zoomCamera: (factor) => set((state) => ({
+    cameraRequest: { kind: 'zoom', factor, seq: (state.cameraRequest?.seq ?? 0) + 1 }
+  })),
+
+  fitCamera: (options) => set((state) => ({
+    cameraRequest: {
+      kind: 'fit',
+      resetDirection: options?.resetDirection ?? false,
+      seq: (state.cameraRequest?.seq ?? 0) + 1
     }
   })),
 

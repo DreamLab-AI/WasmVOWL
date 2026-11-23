@@ -13,6 +13,7 @@ import { useFrame } from '@react-three/fiber';
 import type { WebVowl } from '@dreamlab-ai/vowl-wasm';
 import { useGraphStore } from '../stores/useGraphStore';
 import { useUIStore } from '../stores/useUIStore';
+import { useLabelStore } from '../stores/useLabelStore';
 import { engineCounters, exposeDebugHandle } from '../lib/debugHandle';
 
 interface UseWasmSimulationOptions {
@@ -90,7 +91,7 @@ export function useWasmSimulation(options: UseWasmSimulationOptions = {}) {
     }
 
     initWasm();
-    exposeDebugHandle({ graphStore: useGraphStore, uiStore: useUIStore });
+    exposeDebugHandle({ graphStore: useGraphStore, uiStore: useUIStore, labelStore: useLabelStore });
 
     return () => {
       mounted = false;

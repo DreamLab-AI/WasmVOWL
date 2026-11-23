@@ -135,3 +135,38 @@ Stays open:
 - Default camera framing and the unwired zoom buttons.
 - Keyboard access, search/filter/selection/export acceptance and measured performance. On the sidecar the one-tick-per-frame simulation took about 50 s for 300 ticks on foaf and sioc (about 170 ms per frame) and 116 s on goodrelations at −300 (about 390 ms per frame). These are observations, not a benchmark.
 - Publisher lineage.
+
+## Camera, labels and CI — 2026-11-23
+
+Branch `feat/readable-camera-labels-ci` (base `ccb934e`). Engine unchanged: `@dreamlab-ai/vowl-wasm` 0.3.0, hook settings link distance 100 and charge −300. The proposed/partial/inactive axes are unchanged.
+
+Closed by this change:
+
+- **Default camera framing.** `modern/src/lib/cameraFit.ts` computes the camera distance and centre that show the graph's bounds, with padding, inside the visible part of the canvas: the part on screen and not under an element marked `data-canvas-overlay` (the menu bar and the sidebar). The canvas is `100vh` tall below a 77 px menu, so its bottom 77 px were off-screen, and the 350 px sidebar covers its right edge. The bounds include every node's disc and its estimated label box, wrapped lines included (`framingPoints` in `modern/src/lib/nodeGeometry.ts`). `CameraController` frames the graph on load, re-frames it every 300 ms while the layout runs, and frames it again when the layout settles. It stops following once the user drags or wheels the camera or uses a menu zoom. Switching 2D/3D frames from that mode's default angle. The far plane and the orbit limit grow with the fitted distance. The camera's `far` had been three.js's default 2000 and the orbit limit was also 2000, either of which would have clipped a fitted large graph. Tests: `modern/tests/unit/cameraFit.test.ts`, which projects the fitted bounds back to pixels and checks they lie in the free area, centred; and `nodeGeometry.test.ts`.
+- **Zoom buttons.** Zoom in and out, the new **Fit** button and reset now queue a `cameraRequest` (`useUIStore`) that `CameraController` carries out. Zoom moves the camera along its view direction, 1.25x per click, clamped to 50 to 50,000 units. They used to write `viewport.zoom`, which nothing read. `GraphCanvas` now selects only the view mode from the store. It used to subscribe to the whole store and pass a new camera `position` array on every render. Tests: `useUIStore.test.ts` and `TopMenuBar.test.tsx`.
+- **Label declutter.** `modern/src/lib/labelDeclutter.ts`, fed by `labelCandidates.ts` and run by `LabelDeclutter` at most every 250 ms when positions, selection or zoom change:
+  - A label is hidden when its on-screen font would fall below its kind's minimum: edge labels 8 px; datatype, literal, owl:Thing and set-operator labels 7 px; class labels have none.
+  - The remaining labels are placed greedily, class labels first, then minor node labels, then edge labels, higher degree first within a kind. A label whose box would overlap one already placed is hidden.
+  - The selected and hovered node, and the selected node's edges, always keep their labels.
+  - Tests: `labelDeclutter.test.ts`, `labelCandidates.test.ts`, `useLabelStore.test.ts`.
+- **CI.** `.github/workflows/ci.yml` runs `npm ci`, lint, type-check, test and build in `modern/` on push to `master` and on pull requests, plus `checks/root-surface.test.mjs`. The actions are pinned by SHA: checkout v4.4.0 (the pin vowl-wasm uses) and setup-node v4.4.0 (the pin most common across the estate's workflows; both SHAs checked against the upstream tags). The dead `.travis.yml` (Node 4-6, `grunt jshint`, no Gruntfile) is removed, and a root-surface check keeps it out and keeps deploy steps out of CI. No deploy or Pages workflow was added.
+
+**Browser evidence.** Vite dev server (`NODE_ENV=development`, `?debug`), browser sidecar, 1920×993 viewport. Each file was dropped as a `DataTransfer` drop, with no manual zoom. The screenshots and a measurements file are kept outside the repo, in the agent session's scratch directory (`browser-evidence-readability/`).
+
+| File | Nodes / edges | Ticks | Settled extent x, y | Node labels hidden | Edge labels hidden |
+|---|---|---|---|---|---|
+| foaf | 56 / 74 | 300 | −366…211, −314…313 | 22 of 56 | 66 of 74 |
+| sioc | 49 / 125 | 300 | −253…234, −267…247 | 17 of 49 | 118 of 125 |
+| goodrelations | 147 / 461 | 300 | −276…415, −222…177 | 112 of 147 | 245 of 461 |
+
+- At the default camera after settling, each whole graph sat inside the free area, including goodrelations' far-left deprecated classes with their four-line labels and its separate `Thing`/`Literal` component on the right.
+- The zoom buttons moved the camera in and out, and Fit returned to the framed view.
+- `loadOntology` and `initSimulation` ran once per file. There were no console errors or warnings.
+
+Stays open:
+
+- **Overlap and density.** The layout still packs nodes closer than their drawn discs: the engine has no collision force. goodrelations' core is a hairball whose labels mostly declutter away. Labels can still sit on top of other nodes' discs, because the declutter tests label against label only.
+- **Label boxes are estimates.** They assume a 0.6 em glyph advance and even wrapping. A long unbreakable word can be wider than estimated, so a residual overlap is possible.
+- **Engine.** The hook is unchanged, and WasmVOWL is the only consumer of the `WebVowl` simulator; the other explorers use `NggExplorer`. The likely next step is to move WasmVOWL onto `NggExplorer` rather than add forces to `WebVowl`. A parked draft (DreamLab-AI/vowl-wasm#5) records collision, positional-gravity and annealing setters for `WebVowl` with fixture evidence, in case that move does not happen.
+- Keyboard access, search/filter/selection/export acceptance, measured performance and publisher lineage, as before.
+

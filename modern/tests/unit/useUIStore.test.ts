@@ -89,6 +89,30 @@ describe('useUIStore', () => {
     });
   });
 
+  describe('Camera requests', () => {
+    it('starts with no request', () => {
+      expect(useUIStore.getState().cameraRequest).toBeNull();
+    });
+
+    it('queues a zoom step with a fresh sequence number each time', () => {
+      const store = useUIStore.getState();
+      store.zoomCamera(1.2);
+      const first = useUIStore.getState().cameraRequest;
+      expect(first).toMatchObject({ kind: 'zoom', factor: 1.2 });
+      store.zoomCamera(1.2);
+      const second = useUIStore.getState().cameraRequest;
+      expect(second!.seq).toBeGreaterThan(first!.seq);
+    });
+
+    it('queues a fit, optionally resetting the view direction', () => {
+      const store = useUIStore.getState();
+      store.fitCamera();
+      expect(useUIStore.getState().cameraRequest).toMatchObject({ kind: 'fit', resetDirection: false });
+      store.fitCamera({ resetDirection: true });
+      expect(useUIStore.getState().cameraRequest).toMatchObject({ kind: 'fit', resetDirection: true });
+    });
+  });
+
   describe('Settings Operations', () => {
     it('should update settings', () => {
       const store = useUIStore.getState();

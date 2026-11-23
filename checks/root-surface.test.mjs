@@ -44,3 +44,19 @@ test("F6: tests/README.md only documents npm scripts that exist", () => {
     assert.match(readme, /not wired|orphan|not runnable/i, "README must say the suite is not runnable while src/ is absent");
   }
 });
+
+test("CI: the dead Travis config stays retired and Actions runs the modern gates", () => {
+  // .travis.yml ran Node 4-6 and `grunt jshint` with no root Gruntfile; it was
+  // replaced by .github/workflows/ci.yml on 2026-11-23.
+  assert.ok(!existsSync(resolve(root, ".travis.yml")), ".travis.yml is back");
+  const ci = read(".github/workflows/ci.yml");
+  for (const step of ["npm ci", "npm run lint", "npm run type-check", "npm test", "npm run build"]) {
+    assert.ok(ci.includes(step), `ci.yml does not run "${step}"`);
+  }
+  assert.match(ci, /working-directory: modern/);
+  for (const m of ci.matchAll(/uses:\s*(\S+)/g)) {
+    assert.match(m[1], /@[0-9a-f]{40}$/, `action ${m[1]} is not pinned by commit SHA`);
+  }
+  // Deployment (GitHub Pages or otherwise) is a separate operator decision.
+  assert.doesNotMatch(ci, /deploy-pages|upload-pages-artifact|gh-pages|pages:\s*write/i, "a deploy step crept into CI");
+});

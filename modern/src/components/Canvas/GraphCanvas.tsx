@@ -2,14 +2,21 @@
  * Main R3F Canvas component
  */
 
+import { useMemo } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, PerspectiveCamera, Grid } from '@react-three/drei';
 import { GraphScene } from './GraphScene';
 import { useUIStore } from '../../stores/useUIStore';
 
 export function GraphCanvas() {
-  const { viewport } = useUIStore();
-  const is3D = viewport.mode === '3d';
+  // Select only the mode: subscribing to the whole store re-rendered the
+  // canvas on every notification and re-applied the camera's position prop.
+  const is3D = useUIStore((s) => s.viewport.mode === '3d');
+  // Initial placement only; CameraController frames the graph from here.
+  const initialPosition = useMemo<[number, number, number]>(
+    () => (is3D ? [0, 300, 500] : [0, 0, 500]),
+    [is3D]
+  );
 
   return (
     <div style={{ width: '100%', height: '100vh', background: '#f5f5f5' }}>
@@ -24,16 +31,20 @@ export function GraphCanvas() {
         {/* Camera */}
         <PerspectiveCamera
           makeDefault
-          position={is3D ? [0, 300, 500] : [0, 0, 500]}
+          position={initialPosition}
           fov={50}
+          near={1}
+          far={200000}
         />
 
         {/* Controls */}
+        {/* makeDefault exposes the controls to CameraController via useThree */}
         <OrbitControls
+          makeDefault
           enableDamping
           dampingFactor={0.05}
           minDistance={50}
-          maxDistance={2000}
+          maxDistance={50000}
           enableRotate={is3D}
           enablePan
           mouseButtons={{

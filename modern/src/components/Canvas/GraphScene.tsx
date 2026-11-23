@@ -7,6 +7,8 @@ import { useGraphStore } from '../../stores/useGraphStore';
 import { useWasmSimulation } from '../../hooks/useWasmSimulation';
 import { ClassNode } from './Nodes/ClassNode';
 import { PropertyEdge } from './Edges/PropertyEdge';
+import { CameraController } from './Camera/CameraController';
+import { LabelDeclutter } from './Camera/LabelDeclutter';
 
 export function GraphScene() {
   const { nodes, edges, filteredNodes, filteredEdges } = useGraphStore();
@@ -23,6 +25,9 @@ export function GraphScene() {
 
   return (
     <group>
+      <CameraController isRunning={isRunning} />
+      <LabelDeclutter />
+
       {/* Render edges first (below nodes) */}
       {visibleEdges.map((edge) => (
         <PropertyEdge key={edge.id} edge={edge} />

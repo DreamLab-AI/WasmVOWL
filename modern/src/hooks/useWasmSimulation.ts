@@ -49,8 +49,9 @@ export function useWasmSimulation(options: UseWasmSimulationOptions = {}) {
   const chargeStrength = useUIStore((s) => s.settings.chargeStrength);
   const addNotification = useUIStore((s) => s.addNotification);
 
-  /** loadOntology replaces the engine's simulation and with it any parameters
-   *  set before, so they are (re)applied after every load. */
+  /** Since vowl-wasm 0.3.0 loadOntology keeps the parameters set before it
+   *  (0.2.x reset them). They are still applied after every load, so the
+   *  engine always matches the current UI settings whatever happened before. */
   const applySettings = useCallback((wasm: WebVowl) => {
     const { settings } = useUIStore.getState();
     wasm.setCenter(0, 0);

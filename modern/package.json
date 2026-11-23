@@ -16,7 +16,7 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "@dreamlab-ai/vowl-wasm": "https://github.com/DreamLab-AI/vowl-wasm/releases/download/v0.2.3/vowl-wasm-0.2.3-pkg.tgz",
+    "@dreamlab-ai/vowl-wasm": "0.3.0",
     "@react-three/drei": "^10.7.6",
     "@react-three/fiber": "^9.4.0",
     "immer": "^10.2.0",

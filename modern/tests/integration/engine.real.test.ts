@@ -17,6 +17,7 @@ import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { initSync, WebVowl } from '@dreamlab-ai/vowl-wasm';
 import { normaliseOwl2Vowl } from '@/lib/owl2vowl';
 import { useGraphStore } from '@/stores/useGraphStore';
+import { useUIStore } from '@/stores/useUIStore';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const modernRoot = path.resolve(here, '../..');
@@ -43,15 +44,62 @@ const FILES = Object.keys(EXPECTED);
 
 /** The engine seeds nodes on a circle of this radius (LayoutConfig::default). */
 const SEED_RADIUS = 300;
-/** A layout whose coordinates ever exceed this has diverged. */
-const BOUNDED_PEAK = 10 * SEED_RADIUS;
 const MAX_TICKS = 2000;
 
-/** The hook's defaults (useUIStore settings). */
+/** The settings the hook applies: useUIStore's defaults, read rather than
+ *  copied so the test cannot drift from the app. */
+const { linkDistance: LINK_DISTANCE, chargeStrength: CHARGE_STRENGTH } = useUIStore.getState().settings;
+
+/** A layout that ever leaves this box (per axis) has diverged. It scales with
+ *  the graph, as a settled force layout's extent does. */
+function boundFor(nodeCount: number): number {
+  return 10 * LINK_DISTANCE * Math.sqrt(nodeCount);
+}
+
 function configure(engine: WebVowl): void {
   engine.setCenter(0, 0);
-  engine.setLinkDistance(100);
-  engine.setChargeStrength(-300);
+  engine.setLinkDistance(LINK_DISTANCE);
+  engine.setChargeStrength(CHARGE_STRENGTH);
+}
+
+interface LayoutRun {
+  ticks: number;
+  /** Largest |coordinate| seen on any tick. */
+  peak: number;
+  /** Largest single-node displacement on the last tick. */
+  lastStep: number;
+  allFinite: boolean;
+}
+
+/** Tick to isFinished (or MAX_TICKS), tracking the peak, finiteness and the
+ *  final per-tick motion. */
+function runLayout(engine: WebVowl): LayoutRun {
+  let prev = engine.getNodePositions();
+  let peak = 0;
+  let lastStep = 0;
+  let allFinite = true;
+  const ticks = runToFinish(engine, (pos) => {
+    lastStep = 0;
+    for (let i = 0; i < pos.length; i++) {
+      if (!Number.isFinite(pos[i])) allFinite = false;
+      peak = Math.max(peak, Math.abs(pos[i]));
+    }
+    for (let i = 0; i < pos.length; i += 2) {
+      lastStep = Math.max(lastStep, Math.hypot(pos[i] - prev[i], pos[i + 1] - prev[i + 1]));
+    }
+    prev = pos;
+  });
+  return { ticks, peak, lastStep, allFinite };
+}
+
+function minPairDistance(pos: Float32Array): number {
+  let min = Infinity;
+  for (let i = 0; i < pos.length; i += 2) {
+    for (let j = i + 2; j < pos.length; j += 2) {
+      min = Math.min(min, Math.hypot(pos[i] - pos[j], pos[i + 1] - pos[j + 1]));
+    }
+  }
+  return min;
 }
 
 function runToFinish(engine: WebVowl, onTick?: (pos: Float32Array) => void): number {
@@ -145,8 +193,8 @@ describe('the nine legacy ontologies through the normaliser into the real engine
       const engine = new WebVowl();
       try {
         engine.loadOntology(JSON.stringify(n.engine));
-        // loadOntology replaces the engine's simulation (and its config), so
-        // parameters are applied after it, as the hook does.
+        // Since 0.3.0 loadOntology keeps settings made before it; the hook
+        // still applies them after each load, and so does this test.
         configure(engine);
         engine.initSimulation();
 
@@ -162,23 +210,27 @@ describe('the nine legacy ontologies through the normaliser into the real engine
       }
     });
 
-    // Characterisation of an upstream defect, not a desired behaviour: the
-    // 0.2.3 ForceSimulation diverges on every non-trivial corpus graph (the
-    // highest out-degree node grows ~10x per tick; see ADR-001 closeout
-    // 2026-11-23). This test asserts the divergence so that it fails, and is
-    // flipped to a bounded-layout assertion, the day the engine is fixed.
-    it.skipIf(expectedNodes < 2)('UPSTREAM DEFECT (vowl-wasm 0.2.3): the layout diverges far beyond the seed radius', () => {
+    // vowl-wasm 0.2.3 diverged here (peaks of 1e7 and beyond; ADR-001
+    // closeout 2026-11-23). 0.3.0 fixed the force simulation, and this is the
+    // inverted assertion: bounded, finite, no coincident nodes, settled.
+    it.skipIf(expectedNodes < 2)('lays out bounded, finite, without coincident nodes, and settles', () => {
       const n = normaliseOwl2Vowl(readOntology(file));
       const engine = new WebVowl();
       try {
         engine.loadOntology(JSON.stringify(n.engine));
         configure(engine);
         engine.initSimulation();
-        let peak = 0;
-        runToFinish(engine, (pos) => {
-          for (let i = 0; i < pos.length; i++) peak = Math.max(peak, Math.abs(pos[i]));
-        });
-        expect(peak).toBeGreaterThan(BOUNDED_PEAK);
+        const run = runLayout(engine);
+
+        expect(engine.isFinished()).toBe(true);
+        expect(run.ticks).toBeLessThan(MAX_TICKS);
+        expect(run.allFinite).toBe(true);
+        expect(run.peak).toBeLessThan(boundFor(expectedNodes));
+        // Measured 9.4 to 31 across the corpus; 1 unit means two nodes drawn
+        // on top of each other.
+        expect(minPairDistance(engine.getNodePositions())).toBeGreaterThan(1);
+        // Measured at most 0.006 on the last tick.
+        expect(run.lastStep).toBeLessThan(0.05 * LINK_DISTANCE);
       } finally {
         engine.free();
       }
@@ -209,10 +261,10 @@ describe('the sample ontologies behind the drop zone buttons (public/ontologies)
   });
 });
 
-describe('the layout oracle on a graph the 0.2.3 engine can lay out', () => {
-  // Positive control for the divergence characterisation above: a chain
-  // (out-degree 1 everywhere) stays bounded and spreads, so the oracle can
-  // pass and the divergence is a property of the corpus graphs' hubs.
+describe('the layout oracle on a hub-free graph', () => {
+  // Control for the corpus assertions above: a chain (out-degree 1
+  // everywhere) has no hubs, so it isolates the oracle itself. It also passed
+  // on 0.2.3, which diverged only on graphs with hubs.
   it('a 12-node chain stays within the bound, spread, with no coincident nodes', () => {
     const ids = Array.from({ length: 12 }, (_, i) => `c${i}`);
     const n = normaliseOwl2Vowl({
@@ -224,12 +276,10 @@ describe('the layout oracle on a graph the 0.2.3 engine can lay out', () => {
       engine.loadOntology(JSON.stringify(n.engine));
       configure(engine);
       engine.initSimulation();
-      let peak = 0;
-      runToFinish(engine, (pos) => {
-        for (let i = 0; i < pos.length; i++) peak = Math.max(peak, Math.abs(pos[i]));
-      });
+      const run = runLayout(engine);
       expect(engine.isFinished()).toBe(true);
-      expect(peak).toBeLessThan(BOUNDED_PEAK);
+      expect(run.allFinite).toBe(true);
+      expect(run.peak).toBeLessThan(boundFor(ids.length));
       expectDistinctAndSpread(engine.getNodePositions(), ids.length, 100);
     } finally {
       engine.free();

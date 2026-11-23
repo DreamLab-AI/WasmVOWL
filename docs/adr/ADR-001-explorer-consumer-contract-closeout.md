@@ -51,5 +51,72 @@ Closed by this change, with evidence:
 
 Stays open:
 
-- **Layout quality (upstream defect).** vowl-wasm 0.2.3's `WebVowl` ForceSimulation diverges on every corpus graph: the highest out-degree node grows about 10× per tick (peak |coordinate| in the browser: foaf 1.5e19, sioc 4.1e22, goodrelations 2.6e30). Cause, from the 0.2.3 source: attraction is scaled by alpha in the force and again in integration (stiffness ≈ out-degree × alpha²), comes only from out-neighbours with no degree normalisation and parallel edges stacking, centre strength is 1.0, and `loadOntology` also resets the simulation config (the hook now reapplies it). vowl-wasm `origin/main` at `f04ff27` (fetched 2026-11-23) has no layout change since v0.2.3 beyond one lint attribute. In an exploratory probe kept outside the repo (edges symmetrised, self-loops dropped), the same graphs in 0.2.3's `NggExplorer` (CSR simulator, via `encodeNgg1`/`loadCsr`) stayed bounded (peak about 300 for foaf, sioc and goodrelations; minimum pairwise distance 15.9 / 8.2 / 2.0), which points at that simulator, or a patched `ForceSimulation`, as the fix path. A characterisation test asserts the divergence and has a bounded 12-node chain as positive control; it is to be flipped when the engine is fixed.
+- **Layout quality (upstream defect).** *Superseded by the 0.3.0 adoption below: bounded layout met, readability partial.* vowl-wasm 0.2.3's `WebVowl` ForceSimulation diverges on every corpus graph: the highest out-degree node grows about 10× per tick (peak |coordinate| in the browser: foaf 1.5e19, sioc 4.1e22, goodrelations 2.6e30). Cause, from the 0.2.3 source: attraction is scaled by alpha in the force and again in integration (stiffness ≈ out-degree × alpha²), comes only from out-neighbours with no degree normalisation and parallel edges stacking, centre strength is 1.0, and `loadOntology` also resets the simulation config (the hook now reapplies it). vowl-wasm `origin/main` at `f04ff27` (fetched 2026-11-23) has no layout change since v0.2.3 beyond one lint attribute. In an exploratory probe kept outside the repo (edges symmetrised, self-loops dropped), the same graphs in 0.2.3's `NggExplorer` (CSR simulator, via `encodeNgg1`/`loadCsr`) stayed bounded (peak about 300 for foaf, sioc and goodrelations; minimum pairwise distance 15.9 / 8.2 / 2.0), which points at that simulator, or a patched `ForceSimulation`, as the fix path. A characterisation test asserts the divergence and has a bounded 12-node chain as positive control; it is to be flipped when the engine is fixed.
 - Keyboard access, search/filter/selection/export acceptance, measured performance (not measured; goodrelations visibly renders slowly with 461 edges on the sidecar) and publisher lineage are not addressed.
+
+## Engine 0.3.0 adoption — 2026-11-23
+
+Same branch. The explorer now pins `@dreamlab-ai/vowl-wasm` `0.3.0` from the npm registry (exact version, lock `resolved` on registry.npmjs.org, integrity `sha512-TzR8h1Lx…oKQ==`). The npm tarball is byte-identical to the GitHub release asset `vowl-wasm-0.3.0-pkg.tgz` (both sha256 `d2af7e50…d305`, the value in the release `.sha256`). Its npm SLSA provenance names `DreamLab-AI/vowl-wasm`, `.github/workflows/release.yml`, `refs/tags/v0.3.0`. The registry is preferred to the release URL now that releases publish there with provenance. `vite build` emits `assets/vowl_wasm_bg-*.wasm` (272 kB), loaded through `new URL("/assets/vowl_wasm_bg-….wasm", import.meta.url)`. 0.3.0 fixes the force simulation: springs act on both ends with d3's degree-normalised strength, the charge sign is repulsive, there is a short-range limit and d3 `forceCenter` centring, and settings survive `loadOntology`. The proposed/partial/inactive axes are unchanged.
+
+**Real-engine evidence** (`modern/tests/integration/engine.real.test.ts`, Node, the hook's settings read from `useUIStore`: link distance 100, charge −300). The divergence characterisation is inverted. For each of the seven non-empty corpus files the test now asserts:
+
+- every coordinate on every tick is finite and below 10 × link distance × √n;
+- `isFinished` is reached before 2000 ticks (it takes 300);
+- no two nodes are within 1 unit (measured minimum 9.4 to 31);
+- the last tick moves no node more than 0.05 × link distance (measured at most 0.006).
+
+The 12-node chain stays as the hub-free control. Measured peaks over the whole run, against their bounds: benchmark 398/7211, foaf 366/7483, goodrelations 415/12124, muto 388/4000, ontovibe 351/7416, personasonto 334/10000, sioc 348/7000. None exceeds the 300-unit seed circle by more than about 40%.
+
+**Browser evidence.** Vite dev server with `NODE_ENV=development`, `?debug`, browser sidecar at a 1920×993 viewport. Each file was dropped as a `DataTransfer` drop on the drop zone, using the menu's New button between files. Positions were read from the store after `isFinished` plus 2.5 s.
+
+| File | Charge | Nodes / edges | Engine loads (cumulative) | Final extent x, y | Min pair distance | Pairs closer than one node diameter (40) |
+|---|---|---|---|---|---|---|
+| foaf | −300 | 56 / 74 | 1 | −366…211, −315…313 | 11.8 | 34 |
+| goodrelations | −300 | 147 / 461 | 2 | −276…415, −222…177 | 9.4 | 536 |
+| goodrelations | −1000 | 147 / 461 | 3 | −385…432, −267…215 | 15.1 | 305 |
+| sioc | −300 | 49 / 125 | 4 | −253…234, −267…247 | 15.0 | 33 |
+
+- `initSimulation` matched `loadOntology` (one each per file), every run finished in 300 ticks, and every coordinate was finite.
+- The browser numbers equal the Node numbers for the same graph and settings.
+- No console errors or warnings.
+
+**Layout acceptance.**
+
+- **Bounded and settled: met.** Shown in the table and the tests above.
+- **Readable: partial.**
+  - *foaf and sioc:* the whole graph fits the viewport once zoomed out, with labelled hubs and spokes. The dense core of each still overlaps labels.
+  - *goodrelations:* 147 nodes and 461 edges settle inside roughly 700 × 450 units, a hairball whose core labels are unreadable at any zoom.
+  - *Why:*
+    - The engine's alpha schedule always stops at 300 ticks, and `WebVowl` exposes no alpha-decay or collision setting.
+    - Node discs are 40 units across, against a link distance of 100.
+- **Default camera framing.** The camera sits at z = 500 with a 50° field of view, so it shows about ±233 units vertically. Every settled corpus layout is larger than that, so the user has to zoom out with the mouse wheel. The menu's zoom buttons change `viewport.zoom` but do not move the camera (a pre-existing defect).
+
+**Charge setting kept at −300.** The Node sweep covered link distance 100 and 150 against charge −30, −300 and −1000.
+
+- Against the engine default of −30, −300 roughly halves the overlapping pairs on every file and doubles the minimum separation.
+- Going on to −1000 cuts overlapping pairs by a further 30–60% (goodrelations 536 → 305).
+- The cost of −1000 is larger graphs:
+  - foaf's peak goes from 366 to 602;
+  - at link distance 150, one ontovibe node went to 1494.
+- On goodrelations the core stays unreadable at either setting.
+
+Since −1000 does not make the dense case readable and pushes the sparse ones further outside the default camera framing, the hook keeps −300 (and link distance 100). The hook still applies its settings after every load, although 0.3.0 no longer resets them.
+
+**Disconnected components.**
+
+- 0.3.0 does not attract separate components towards each other: d3 `forceCenter` moves only the centroid. So small components stay near the initial 300-unit seed circle while the main component contracts inside it (foaf: main component radius 220, eleven small components at 82 to 380 from the centre; goodrelations: 141-node component radius 191, its 4-, 1- and 1-node components at 285 to 383).
+- In the UI they appear as isolated nodes or tiny clusters ringing the main graph. Examples:
+  - foaf: `LabelProperty` on the left; `Person`, `Image`, `Agent` and `Class` below and to the right;
+  - goodrelations: the `productID`/`name`/`description` cluster on the right, and the deprecated "N-ary relations" and "Location of sales or service provisioning" classes on the left.
+- This is the known limitation reported by the vowl-wasm agent. It reads as "not connected" rather than as an error.
+
+**Debug hook.** `window.__wasmvowl` is now installed only when `import.meta.env.DEV` is true, and then only with `?debug`. The production bundle contains no `__wasmvowl` string and no `?debug` check (grep of `dist/assets/*.js`). A dev server started from a shell that exports `NODE_ENV=production` reports `DEV: false`, so the browser run above set `NODE_ENV=development`.
+
+Screenshots and the position JSON are kept outside the repo, in the agent session's scratch directory (`browser-evidence-030/`: foaf, goodrelations at −300 and −1000, and sioc, each settled at the default camera and zoomed out).
+
+Stays open:
+
+- Readability of dense graphs (goodrelations). This is engine-side: alpha schedule, collision, and component packing for disconnected parts.
+- Default camera framing and the unwired zoom buttons.
+- Keyboard access, search/filter/selection/export acceptance and measured performance. On the sidecar the one-tick-per-frame simulation took about 50 s for 300 ticks on foaf and sioc (about 170 ms per frame) and 116 s on goodrelations at −300 (about 390 ms per frame). These are observations, not a benchmark.
+- Publisher lineage.

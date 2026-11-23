@@ -27,9 +27,9 @@ describe('useUIStore', () => {
       expect(viewport.target).toEqual([0, 0, 0]);
     });
 
-    it('defaults the layout to the engine charge and link distance with the recommended readability parameters', () => {
+    it('defaults the layout to the engine charge and link distance with the recommended readability parameters, collision radius 23 for the bordered 20-unit discs', () => {
       const { settings } = useUIStore.getState();
-      expect(settings.layout).toEqual({ charge: 2000, linkDistance: 60, ...RECOMMENDED_LAYOUT_PARAMS });
+      expect(settings.layout).toEqual({ charge: 2000, linkDistance: 60, ...RECOMMENDED_LAYOUT_PARAMS, collideRadius: 23 });
     });
 
     it('should have zero loading progress initially', () => {
@@ -141,7 +141,7 @@ describe('useUIStore', () => {
 
       const { settings } = useUIStore.getState();
       expect(settings.nodeScale).toBe(1);
-      expect(settings.layout).toEqual({ charge: 2000, linkDistance: 60, ...RECOMMENDED_LAYOUT_PARAMS });
+      expect(settings.layout).toEqual({ charge: 2000, linkDistance: 60, ...RECOMMENDED_LAYOUT_PARAMS, collideRadius: 23 });
     });
   });
 

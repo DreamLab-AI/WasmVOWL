@@ -209,7 +209,7 @@ Branch `feat/ngg-layout` (base `ab9122e`), part of the operator-approved converg
   - the `autoStart`/`iterations` options;
   - the per-file `sameIds` check: ids and store come from one object, and the driver validates uniqueness.
 
-**Settings.** `GraphSettings.layout` holds `NggExplorer` `setParam` keys: `charge` 2000, `linkDistance` 60 (the vowl-wasm 0.4.0 defaults), and `RECOMMENDED_LAYOUT_PARAMS` (`collideRadius` 21, `collideStrength` 0.7, `collideIterations` 3, `componentGravity` 0.1). Every key is always sent, so `resetSettings` restores the engine exactly. `updateLayout(partial)` tunes them live: the hook sends only the changed keys, and the driver restarts a loaded layout warm.
+**Settings.** `GraphSettings.layout` holds `NggExplorer` `setParam` keys: `charge` 2000, `linkDistance` 60 (the vowl-wasm 0.4.0 defaults), and `RECOMMENDED_LAYOUT_PARAMS` (`collideStrength` 0.7, `collideIterations` 3, `componentGravity` 0.1) with `collideRadius` 23 in place of the recommended 21. WasmVOWL's discs are radius 20 plus a 2-unit border, larger than the other consumers' nodes (12 px or less), so it diverges from the shared radius (see Layout acceptance). Every key is always sent, so `resetSettings` restores the engine exactly. `updateLayout(partial)` tunes them live: the hook sends only the changed keys, and the driver restarts a loaded layout warm.
 
 - `linkDistance` maps to `linkDistance`. It is the same quantity, but it now uses the engine default of 60 instead of 100, which was tuned for the other force model.
 - `chargeStrength` −300 is removed in favour of `charge`. WebVowl's d3-style sign (negative repels) and scale do not carry over: sending −300 to `NggExplorer` would make nodes attract each other.
@@ -222,9 +222,9 @@ Branch `feat/ngg-layout` (base `ab9122e`), part of the operator-approved converg
   - one engine load;
   - layout indices equal the store ids in order, and the springs equal the store edges minus self-loops and merged pairs;
   - settled before 2000 ticks (it takes 300);
-  - every coordinate finite and below 10 × link distance × √n (peaks 100 to 283);
-  - minimum pair distance at least 2 × 21 − 1. The measured minimum is 41.67 (goodrelations) to 42.00 (muto). With collision off, the same graphs settle with minimum distances of 4.9 to 33.3, so the assertion discriminates.
-  - the last tick moves no node more than 0.05 × link distance (measured at most 0.095).
+  - every coordinate finite and below 10 × link distance × √n (peaks 108 to 308);
+  - minimum pair distance at least 2 × 23 − 1. The measured minimum is 45.12 (goodrelations) to 46.00 (muto). With collision off, the same graphs settle with minimum distances of 4.9 to 33.3, so the assertion discriminates.
+  - the last tick moves no node more than 0.05 × link distance (measured at most 0.083).
 - The 12-node chain stays as the hub-free control.
 - Unit tests (`useWasmSimulation.test.ts`) run the real driver and adapter against an `NggExplorer` double. They cover:
   - index mapping and bulk updates;
@@ -264,11 +264,11 @@ ontovibe's six remaining pairs all involve its one node with instances, drawn wi
 
 - **No disc overlaps: met for uniform-size nodes.** foaf, goodrelations and sioc have zero overlapping pairs, down from 34, 536 and 33, and so do benchmark, muto and personasonto. ontovibe keeps 6 (from 42), all involving its one larger, instance-scaled node.
 - **Readable: partial.** Collision radius 21 packs nodes about 42 apart, edge to edge for WasmVOWL's 20-unit discs. The border rings touch or overlap by up to 2 units, which is why the border column rises. Layouts are also about half as wide as before (charge 2000 at link distance 60), so the default camera frames them closer. Labels now overlap neighbouring discs more often than before, and goodrelations' core is still dense.
-- **Collision radius 23** would clear the borders of the uniform-size nodes: zero overlapping pairs with border on all three files, minimum pair distance 45.1 to 46.0 (Node probe). It is not applied, because this change adopts the shared `RECOMMENDED_LAYOUT_PARAMS` as briefed. It is a one-line `updateLayout({ collideRadius: 23 })` or default change if WasmVOWL should diverge from the other consumers.
+- **Collision radius 23: applied as the default.** The tables above were measured at the shared radius 21. At 23, the uniform-size nodes clear each other's borders: zero overlapping pairs with border on foaf, goodrelations and sioc, minimum pair distance 45.1 to 46.0 (Node probe; the real-engine test measures 45.12 to 46.00 across the seven non-empty files). WasmVOWL therefore keeps the other recommended values and sets `collideRadius` 23, because its discs (radius 20 plus a 2-unit border) are larger than the other consumers' nodes (12 px or less). `updateLayout({ collideRadius: 21 })` restores the shared value live.
 
 **Performance observation.** On the sidecar, goodrelations renders at about 2.7 frames per second while the layout runs, and 22 when idle. Each snapshot re-renders every node and edge, so the 6 ms tick budget per frame is a small share of each frame. This is an observation, not a benchmark. Moving the driver into a worker, or cutting the re-render cost per snapshot, is separate work.
 
 Stays open:
 
-- Label-over-disc overlap and goodrelations' density; the collision-radius choice above; instance-scaled nodes (ontovibe), which a uniform collision radius cannot space.
+- Label-over-disc overlap and goodrelations' density; instance-scaled nodes (ontovibe), which a uniform collision radius cannot space.
 - Keyboard access, search/filter/selection/export acceptance, measured performance and publisher lineage, as before.

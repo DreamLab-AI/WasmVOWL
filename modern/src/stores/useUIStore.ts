@@ -38,12 +38,17 @@ interface UIStore extends UIState {
 }
 
 /**
- * The layout every NggExplorer consumer uses: the engine's own `charge` and
- * `linkDistance` (vowl-wasm 0.4.0 defaults, stated so that a reset restores
- * them after tuning) with ontomark-graph's readability parameters.
+ * The engine's own `charge` and `linkDistance` (vowl-wasm 0.4.0 defaults,
+ * stated so that a reset restores them after tuning) with ontomark-graph's
+ * readability parameters, except the collision radius.
+ *
+ * `collideRadius` is 23, not the recommended 21: WasmVOWL draws node discs at
+ * radius 20 plus a 2-unit border ring, larger than the other consumers' nodes
+ * (12 px or less). At 21 the rings touch or overlap; at 23 nodes sit at least
+ * 2 x 22 apart, so uniform-size discs clear each other's borders.
  */
 function defaultLayout(): LayoutSettings {
-  return { charge: 2000, linkDistance: 60, ...RECOMMENDED_LAYOUT_PARAMS };
+  return { charge: 2000, linkDistance: 60, ...RECOMMENDED_LAYOUT_PARAMS, collideRadius: 23 };
 }
 
 const defaultSettings: GraphSettings = {

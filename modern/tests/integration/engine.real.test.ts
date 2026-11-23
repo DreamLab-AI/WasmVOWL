@@ -56,11 +56,14 @@ const MAX_TICKS = 2000;
  *  copied so the test cannot drift from the app. */
 const LAYOUT: LayoutParams = useUIStore.getState().settings.layout;
 const LINK_DISTANCE = useUIStore.getState().settings.layout.linkDistance;
-const COLLIDE_RADIUS = RECOMMENDED_LAYOUT_PARAMS.collideRadius;
-/** collideStrength 0.7 resolves 70% of an overlap per pass, so the floor is
- *  approached, not met exactly. Measured minimum pair distance 41.67
- *  (goodrelations) to 42.00 (muto); with collision off the same graphs settle
- *  with pairs 4.9 to 33.3 apart, so this tolerance still tells them apart. */
+/** WasmVOWL's collision radius: 23, above the recommended 21, because its
+ *  discs are radius 20 plus a 2-unit border (see useUIStore's defaultLayout). */
+const COLLIDE_RADIUS = 23;
+/** collideStrength 0.7 resolves 70% of an overlap per pass, so the floor
+ *  (2 x 23 - 1 = 45) is approached, not met exactly. Measured minimum pair
+ *  distance 45.12 (goodrelations) to 46.00 (muto); with collision off the same
+ *  graphs settle with pairs 4.9 to 33.3 apart, so this tolerance still tells
+ *  them apart. */
 const COLLIDE_TOLERANCE = 1;
 
 /** A layout that ever leaves this box (per axis) has diverged. It scales with
@@ -178,8 +181,8 @@ describe('the pinned engine and the app settings', () => {
     }
   });
 
-  it('defaults to RECOMMENDED_LAYOUT_PARAMS on top of the engine defaults', () => {
-    expect(LAYOUT).toMatchObject(RECOMMENDED_LAYOUT_PARAMS);
+  it('defaults to RECOMMENDED_LAYOUT_PARAMS on top of the engine defaults, with collision radius 23', () => {
+    expect(LAYOUT).toEqual({ charge: 2000, linkDistance: 60, ...RECOMMENDED_LAYOUT_PARAMS, collideRadius: COLLIDE_RADIUS });
   });
 });
 
@@ -245,12 +248,12 @@ describe('the nine legacy ontologies through the normaliser into the real layout
       expect(run.ticks).toBeLessThan(MAX_TICKS);
       expect(run.positions.length).toBe(expectedNodes * 2);
       expect(run.allFinite).toBe(true);
-      // Peaks measured at 100 to 283, under 5% of the bound.
+      // Peaks measured at 108 to 308, under 5% of the bound.
       expect(run.peak).toBeLessThan(boundFor(expectedNodes));
       // Collision keeps every pair two radii apart, give or take what one
       // 0.7-strength pass leaves.
       expect(minPairDistance(run.positions)).toBeGreaterThanOrEqual(2 * COLLIDE_RADIUS - COLLIDE_TOLERANCE);
-      // Measured at most 0.095 (goodrelations) on the last tick.
+      // Measured at most 0.083 (goodrelations) on the last tick.
       expect(run.lastStep).toBeLessThan(0.05 * LINK_DISTANCE);
     });
   });

@@ -86,13 +86,24 @@ describe('normaliseOwl2Vowl', () => {
           { id: 'x', type: 'owl:Class', label: '' },
           { id: 'y', type: 'owl:Class', iri: 'http://ex.org/onto#Thingy' },
           { id: 'z', type: 'rdfs:Literal' },
-          { id: 't', type: 'owl:Thing' }
+          { id: 't', type: 'owl:Thing' },
+          { id: 'u', type: 'owl:unionOf' },
+          { id: 'i', type: 'owl:intersectionOf' },
+          { id: 'c', type: 'owl:complementOf' },
+          { id: 'd', type: 'owl:disjointUnionOf' },
+          { id: 'a', type: 'owl:Class', attributes: ['anonymous'] }
         ],
         property: []
       });
 
       const labels = Object.fromEntries(n.engine.class.map((c) => [c.id, c.label]));
-      expect(labels).toEqual({ x: 'x', y: 'Thingy', z: 'Literal', t: 'Thing' });
+      expect(labels).toEqual({
+        x: 'x', y: 'Thingy', z: 'Literal', t: 'Thing',
+        u: 'Union', i: 'Intersection', c: 'Complement', d: 'Disjoint union', a: 'Anonymous class'
+      });
+      expect(Object.fromEntries(n.nodes.map((v) => [v.id, v.labelSource]))).toEqual({
+        x: 'id', y: 'iri', z: 'type', t: 'type', u: 'type', i: 'type', c: 'type', d: 'type', a: 'type'
+      });
     });
   });
 

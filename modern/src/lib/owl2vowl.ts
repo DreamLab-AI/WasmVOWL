@@ -24,8 +24,11 @@
  *   `rdfs:Literal`) gets its own datatype node for that edge, as owl2vowl
  *   emits one datatype node per use.
  * - Labels: language map `en`, then `IRI-based`, `undefined`, `default`, any
- *   other value; then the IRI fragment; then `Literal` / `Thing` by type; then
- *   the id. The engine never receives an empty label.
+ *   other value; then the IRI fragment; then a name for the type (`Literal`,
+ *   `Thing`, and `Union` / `Intersection` / `Complement` / `Disjoint union`
+ *   for anonymous set-operator classes, `Anonymous class` for other classes
+ *   owl2vowl marks anonymous); then the id. `labelSource` records
+ *   which. The engine never receives an empty label.
  * - A property missing its domain or range first takes the swapped endpoints
  *   of its inverse property (named on either side, WebVOWL
  *   `createPropertyStructure`); failing that, the missing end is attached to
@@ -117,6 +120,8 @@ export interface NormalisedNode {
   /** The owl2vowl type as written, e.g. `owl:Class`, `owl:Thing`, `rdfs:Literal`, `owl:unionOf`. */
   vowlType: string;
   label: string;
+  /** Where the label came from: the document, the IRI fragment, the type, or the id. */
+  labelSource: 'document' | 'iri' | 'type' | 'id';
   iri?: string;
   comment?: string;
   /** owl2vowl attribute flags (`external`, `deprecated`, ...). */
@@ -182,6 +187,16 @@ export interface NormalisedOntology {
 type Rec = Record<string, unknown>;
 
 const LABEL_PREFERENCE = ['en', 'IRI-based', 'undefined', 'default'];
+
+/** Label for a node with neither a label nor an IRI, by owl2vowl type (lower-cased). */
+const TYPE_LABEL: Record<string, string> = {
+  'rdfs:literal': 'Literal',
+  'owl:thing': 'Thing',
+  'owl:unionof': 'Union',
+  'owl:intersectionof': 'Intersection',
+  'owl:complementof': 'Complement',
+  'owl:disjointunionof': 'Disjoint union'
+};
 
 const SET_OPERATORS: Array<[string, string]> = [
   ['complement', 'COMPLEMENT'],
@@ -349,15 +364,21 @@ export function normaliseOwl2Vowl(doc: unknown): NormalisedOntology {
     }
     const vowlType = str(rec.type) ?? 'owl:Class';
     const iri = str(rec.iri);
-    const lower = vowlType.toLowerCase();
-    const typeLabel = lower === 'rdfs:literal' ? 'Literal' : lower === 'owl:thing' ? 'Thing' : undefined;
-    const label = pickText(rec.label) ?? iriFragment(iri) ?? typeLabel ?? id;
+    const docLabel = pickText(rec.label);
+    const iriLabel = docLabel ? undefined : iriFragment(iri);
+    const anonymous = strList(rec.attributes).includes('anonymous');
+    const typeLabel = docLabel || iriLabel
+      ? undefined
+      : TYPE_LABEL[vowlType.toLowerCase()] ?? (anonymous ? 'Anonymous class' : undefined);
+    const label = docLabel ?? iriLabel ?? typeLabel ?? id;
+    const labelSource = docLabel ? 'document' : iriLabel ? 'iri' : typeLabel ? 'type' : 'id';
     const individuals = rec.individuals;
     const node: NormalisedNode = {
       id,
       kind: nodeKind(vowlType),
       vowlType,
       label,
+      labelSource,
       iri,
       comment: pickText(rec.comment),
       attributes: strList(rec.attributes),
@@ -487,6 +508,7 @@ export function normaliseOwl2Vowl(doc: unknown): NormalisedOntology {
       kind: 'class',
       vowlType: 'owl:Thing',
       label: 'Thing',
+      labelSource: 'type',
       iri: 'http://www.w3.org/2002/07/owl#Thing',
       attributes: [],
       instances: 0,
@@ -510,6 +532,7 @@ export function normaliseOwl2Vowl(doc: unknown): NormalisedOntology {
       kind: nodeKind(dt.vowlType),
       vowlType: dt.vowlType,
       label: dt.label,
+      labelSource: 'type',
       iri: dt.iri,
       attributes: ['datatype'],
       instances: 0,

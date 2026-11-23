@@ -10,7 +10,7 @@
  * foaf's 56 / 74 was also measured independently before this change.
  */
 
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -86,8 +86,7 @@ beforeAll(() => {
 });
 
 describe('the nine legacy ontologies through the normaliser into the real engine', () => {
-  it('covers every file in legacy/src/app/data', async () => {
-    const { readdirSync } = await import('node:fs');
+  it('covers every file in legacy/src/app/data', () => {
     const onDisk = readdirSync(dataDir).filter((f) => f.endsWith('.json')).sort();
     expect(onDisk).toEqual([...FILES].sort());
   });
@@ -109,6 +108,15 @@ describe('the nine legacy ontologies through the normaliser into the real engine
       } finally {
         engine.free();
       }
+    });
+
+    it('never labels a node with a bare owl2vowl numeric id', () => {
+      const n = normaliseOwl2Vowl(readOntology(file));
+      // owl2vowl ids are opaque numbers; a node labelled with one carries no
+      // meaning. (The hand-written benchmark uses readable ids such as
+      // "EightSymmetric" with no label, which WebVOWL also shows as the id.)
+      const bare = n.nodes.filter((v) => v.labelSource === 'id' && /^\d+$/.test(v.id)).map((v) => `${v.id} (${v.vowlType})`);
+      expect(bare).toEqual([]);
     });
 
     it('builds the store graph from the same object, with node ids equal to the engine ids', () => {
@@ -175,6 +183,29 @@ describe('the nine legacy ontologies through the normaliser into the real engine
         engine.free();
       }
     });
+  });
+});
+
+describe('the sample ontologies behind the drop zone buttons (public/ontologies)', () => {
+  const publicDir = path.resolve(modernRoot, 'public/ontologies');
+  const samples = readdirSync(publicDir).filter((f) => f.endsWith('.json')).sort();
+
+  it('includes the three sample buttons', () => {
+    expect(samples).toEqual(['foaf.json', 'minimal.json', 'sioc.json']);
+  });
+
+  it.each(samples)('%s loads into the engine with the normaliser\'s counts and nothing dropped', (file) => {
+    const n = normaliseOwl2Vowl(JSON.parse(readFileSync(path.join(publicDir, file), 'utf8')));
+    const engine = new WebVowl();
+    try {
+      expect(() => engine.loadOntology(JSON.stringify(n.engine))).not.toThrow();
+      expect(engine.getNodeCount()).toBe(n.nodes.length);
+      expect(engine.getEdgeCount()).toBe(n.edges.length);
+      expect(n.nodes.length).toBeGreaterThan(0);
+      expect(n.report.dropped).toEqual([]);
+    } finally {
+      engine.free();
+    }
   });
 });
 

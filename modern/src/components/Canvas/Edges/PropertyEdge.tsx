@@ -2,7 +2,7 @@
  * Property edge visualization component
  */
 
-import { useMemo, useRef } from 'react';
+import { useMemo } from 'react';
 import { Line, Text } from '@react-three/drei';
 import * as THREE from 'three';
 import { useGraphStore } from '../../../stores/useGraphStore';
@@ -14,26 +14,26 @@ interface PropertyEdgeProps {
 }
 
 export function PropertyEdge({ edge }: PropertyEdgeProps) {
-  const { nodes, selectedEdge } = useGraphStore();
-  const { settings } = useUIStore();
+  const sourceNode = useGraphStore((s) => s.nodes.get(edge.source));
+  const targetNode = useGraphStore((s) => s.nodes.get(edge.target));
+  const isSelected = useGraphStore((s) => s.selectedEdge === edge.id);
+  const settings = useUIStore((s) => s.settings);
 
-  const isSelected = selectedEdge === edge.id;
-
-  // Get source and target nodes
-  const sourceNode = nodes.get(edge.source);
-  const targetNode = nodes.get(edge.target);
-
-  // Calculate line points
-  const points = useMemo(() => {
+  // Line end points, label midpoint and arrow direction. Computed before any
+  // early return so the hooks run in the same order on every render.
+  const geometry = useMemo(() => {
     if (!sourceNode || !targetNode) return null;
-
-    return [
-      new THREE.Vector3(sourceNode.position.x, sourceNode.position.y, sourceNode.position.z),
-      new THREE.Vector3(targetNode.position.x, targetNode.position.y, targetNode.position.z)
-    ];
+    const from = new THREE.Vector3(sourceNode.position.x, sourceNode.position.y, sourceNode.position.z);
+    const to = new THREE.Vector3(targetNode.position.x, targetNode.position.y, targetNode.position.z);
+    return {
+      points: [from, to],
+      midpoint: new THREE.Vector3((from.x + to.x) / 2, (from.y + to.y) / 2, (from.z + to.z) / 2 + 1),
+      direction: new THREE.Vector3().subVectors(to, from).normalize()
+    };
   }, [sourceNode, targetNode]);
 
-  if (!points || !sourceNode || !targetNode) return null;
+  if (!geometry || !sourceNode || !targetNode) return null;
+  const { points, midpoint, direction: arrowDirection } = geometry;
 
   // Edge styling based on type
   const getEdgeColor = () => {
@@ -63,27 +63,12 @@ export function PropertyEdge({ edge }: PropertyEdgeProps) {
     switch (edge.type) {
       case 'disjoint':
         return [5, 5];  // Dashed
+      case 'setOperator':
+        return [3, 3];  // Dashed (VOWL set-operator link)
       default:
         return undefined;
     }
   };
-
-  // Calculate midpoint for label
-  const midpoint = useMemo(() => {
-    return new THREE.Vector3(
-      (points[0].x + points[1].x) / 2,
-      (points[0].y + points[1].y) / 2,
-      (points[0].z + points[1].z) / 2 + 1
-    );
-  }, [points]);
-
-  // Calculate arrow direction for directed edges
-  const arrowDirection = useMemo(() => {
-    const direction = new THREE.Vector3()
-      .subVectors(points[1], points[0])
-      .normalize();
-    return direction;
-  }, [points]);
 
   return (
     <group>
@@ -109,8 +94,8 @@ export function PropertyEdge({ edge }: PropertyEdgeProps) {
           anchorY="middle"
           maxWidth={200}
           textAlign="center"
-          backgroundColor="rgba(255, 255, 255, 0.8)"
-          padding={0.05}
+          outlineWidth={2}
+          outlineColor="#ffffff"
         >
           {edge.label}
         </Text>

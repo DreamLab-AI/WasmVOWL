@@ -3,7 +3,7 @@
  */
 
 import { useRef, useState } from 'react';
-import { useFrame } from '@react-three/fiber';
+import { useFrame, type ThreeEvent } from '@react-three/fiber';
 import { Circle, Text } from '@react-three/drei';
 import * as THREE from 'three';
 import { useGraphStore } from '../../../stores/useGraphStore';
@@ -18,10 +18,10 @@ export function ClassNode({ node }: ClassNodeProps) {
   const meshRef = useRef<THREE.Mesh>(null);
   const [hovered, setHovered] = useState(false);
 
-  const { selectNode, hoverNode, selectedNode } = useGraphStore();
-  const { settings } = useUIStore();
-
-  const isSelected = selectedNode === node.id;
+  const selectNode = useGraphStore((s) => s.selectNode);
+  const hoverNode = useGraphStore((s) => s.hoverNode);
+  const isSelected = useGraphStore((s) => s.selectedNode === node.id);
+  const settings = useUIStore((s) => s.settings);
 
   // Calculate node radius based on properties
   const instanceCount = node.properties?.instances || 0;
@@ -32,20 +32,28 @@ export function ClassNode({ node }: ClassNodeProps) {
 
   const scaledRadius = radius * settings.nodeScale;
 
-  // Node colors
+  // Node colors, following the VOWL notation's fills: classes light blue,
+  // datatypes and literals yellow, owl:Thing white, external classes dark blue.
+  const vowlType = String(node.properties?.vowlType ?? '').toLowerCase();
+  const baseColor = () => {
+    if (node.type === 'datatype' || node.type === 'literal') return '#ffcc33';
+    if (vowlType === 'owl:thing') return '#ffffff';
+    if (vowlType === 'externalclass' || (node.properties?.attributes ?? []).includes('external')) return '#3366cc';
+    return '#aaccee';
+  };
   const getNodeColor = () => {
     if (isSelected) return '#67bc0f'; // Green when selected
     if (hovered) return '#8cd0f0';    // Light blue when hovered
-    return '#aaccee';                  // Default blue
+    return baseColor();
   };
 
   // Event handlers
-  const handleClick = (e: any) => {
+  const handleClick = (e: ThreeEvent<MouseEvent>) => {
     e.stopPropagation();
     selectNode(isSelected ? null : node.id);
   };
 
-  const handlePointerOver = (e: any) => {
+  const handlePointerOver = (e: ThreeEvent<PointerEvent>) => {
     e.stopPropagation();
     setHovered(true);
     hoverNode(node.id);

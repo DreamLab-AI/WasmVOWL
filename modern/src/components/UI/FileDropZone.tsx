@@ -6,7 +6,7 @@
 import { useCallback, useState } from 'react';
 import { useGraphStore } from '../../stores/useGraphStore';
 import { useUIStore } from '../../stores/useUIStore';
-import type { OntologyData } from '../../types/ontology';
+import { normaliseOwl2Vowl } from '../../lib/owl2vowl';
 import './FileDropZone.css';
 
 interface FileDropZoneProps {
@@ -22,30 +22,34 @@ export function FileDropZone({ onFileLoaded }: FileDropZoneProps) {
   const addNotification = useUIStore((state) => state.addNotification);
 
   /**
-   * Parse and validate ontology JSON data
+   * Normalise a parsed owl2vowl / WebVOWL document, load it into the store
+   * (which the simulation hook then feeds to the engine), and report what was
+   * loaded. Throws on a document that cannot be normalised.
    */
-  const parseOntology = useCallback((data: any): OntologyData | null => {
-    try {
-      // Validate basic structure
-      if (!data.class || !Array.isArray(data.class)) {
-        throw new Error('Invalid ontology format: missing class array');
-      }
+  const ingest = useCallback((data: unknown, name: string) => {
+    const ontology = normaliseOwl2Vowl(data);
+    loadOntology(ontology);
 
-      // Return validated data
-      return {
-        header: data.header,
-        namespace: data.namespace,
-        class: data.class,
-        property: data.property || [],
-        datatype: data.datatype,
-        classAttribute: data.classAttribute,
-        propertyAttribute: data.propertyAttribute
-      };
-    } catch (err) {
-      console.error('Ontology parsing error:', err);
-      return null;
+    const nodeCount = ontology.nodes.length;
+    const edgeCount = ontology.edges.length;
+    if (nodeCount === 0) {
+      addNotification({
+        type: 'warning',
+        message: `${name} contains no classes to display`,
+        duration: 6000
+      });
+      return false;
     }
-  }, []);
+
+    const dropped = ontology.report.dropped.length;
+    addNotification({
+      type: dropped > 0 ? 'warning' : 'success',
+      message: `Loaded ${name}: ${nodeCount} nodes and ${edgeCount} edges` +
+        (dropped > 0 ? ` (${dropped} record(s) skipped, see console)` : ''),
+      duration: 4000
+    });
+    return true;
+  }, [loadOntology, addNotification]);
 
   /**
    * Load ontology from file
@@ -64,23 +68,9 @@ export function FileDropZone({ onFileLoaded }: FileDropZoneProps) {
       const text = await file.text();
       const data = JSON.parse(text);
 
-      // Parse and validate
-      const ontology = parseOntology(data);
-      if (!ontology) {
-        throw new Error('Failed to parse ontology data');
+      if (ingest(data, file.name)) {
+        onFileLoaded?.(file.name);
       }
-
-      // Load into graph store
-      loadOntology(ontology);
-
-      // Notify success
-      addNotification({
-        type: 'success',
-        message: `Loaded ${ontology.class.length} classes and ${ontology.property?.length || 0} properties`,
-        duration: 3000
-      });
-
-      onFileLoaded?.(file.name);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
       setError(message);
@@ -93,7 +83,7 @@ export function FileDropZone({ onFileLoaded }: FileDropZoneProps) {
     } finally {
       setIsLoading(false);
     }
-  }, [loadOntology, parseOntology, addNotification, onFileLoaded]);
+  }, [ingest, addNotification, onFileLoaded]);
 
   /**
    * Handle drag over event
@@ -148,21 +138,10 @@ export function FileDropZone({ onFileLoaded }: FileDropZoneProps) {
       }
 
       const data = await response.json();
-      const ontology = parseOntology(data);
 
-      if (!ontology) {
-        throw new Error('Failed to parse sample ontology');
+      if (ingest(data, filename)) {
+        onFileLoaded?.(filename);
       }
-
-      loadOntology(ontology);
-
-      addNotification({
-        type: 'success',
-        message: `Loaded sample: ${filename}`,
-        duration: 3000
-      });
-
-      onFileLoaded?.(filename);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
       setError(message);
@@ -175,7 +154,7 @@ export function FileDropZone({ onFileLoaded }: FileDropZoneProps) {
     } finally {
       setIsLoading(false);
     }
-  }, [loadOntology, parseOntology, addNotification, onFileLoaded]);
+  }, [ingest, addNotification, onFileLoaded]);
 
   return (
     <div className="file-drop-zone-container">
@@ -209,7 +188,7 @@ export function FileDropZone({ onFileLoaded }: FileDropZoneProps) {
               <span className="file-input-button">Choose File</span>
             </label>
 
-            <p className="file-hint">Supports: JSON (WebVOWL format)</p>
+            <p className="file-hint">Supports: JSON (owl2vowl / WebVOWL format)</p>
           </div>
         )}
       </div>

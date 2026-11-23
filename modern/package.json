@@ -9,14 +9,14 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "type-check": "tsc --noEmit",
+    "type-check": "tsc -b",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "@dreamlab-ai/vowl-wasm": "https://github.com/DreamLab-AI/vowl-wasm/releases/download/v0.1.1/vowl-wasm-0.1.1-pkg.tgz",
+    "@dreamlab-ai/vowl-wasm": "0.3.0",
     "@react-three/drei": "^10.7.6",
     "@react-three/fiber": "^9.4.0",
     "immer": "^10.2.0",

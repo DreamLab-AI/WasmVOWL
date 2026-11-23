@@ -34,6 +34,26 @@ export type CameraRequest =
   | { kind: 'zoom'; factor: number; seq: number }
   | { kind: 'fit'; resetDirection: boolean; seq: number };
 
+/**
+ * NggExplorer `setParam` keys (vowl-wasm 0.4.0). Every key is always set, so
+ * `resetSettings` restores the engine exactly.
+ */
+export interface LayoutSettings {
+  /** Many-body repulsion; positive repels. Engine default 2000. */
+  charge: number;
+  /** Spring rest length, world units. Engine default 60. */
+  linkDistance: number;
+  /** Collision disc radius, world units; nodes settle at least twice it apart. 0 turns collision off. */
+  collideRadius: number;
+  /** Share of an overlap resolved per collision pass, 0..1. */
+  collideStrength: number;
+  /** Collision passes per tick, 1..16. */
+  collideIterations: number;
+  /** Rigid pull of each disconnected component towards the centre, 0..1. 0 turns it off. */
+  componentGravity: number;
+  [key: string]: number;
+}
+
 export interface GraphSettings {
   // Visual
   showLabels: boolean;
@@ -41,11 +61,9 @@ export interface GraphSettings {
   nodeScale: number;
   edgeWidth: number;
 
-  // Simulation
-  linkDistance: number;
-  chargeStrength: number;
-  gravity: number;
-  friction: number;
+  /** Layout engine parameters, sent as they are to vowl-wasm's NggExplorer
+   *  through @dreamlab-ai/ontomark-graph (`layout.setParams`). */
+  layout: LayoutSettings;
 
   // Performance
   maxFPS: number;

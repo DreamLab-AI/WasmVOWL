@@ -1,10 +1,11 @@
 /**
- * Unit tests for useWasmSimulation hook
+ * Unit tests for useWasmSimulation.
  *
- * The engine is a mock here (the real engine is exercised in
- * tests/integration/engine.real.test.ts). The mock parses what the hook hands
- * it the way vowl-wasm does: it requires a `class` array and reports the ids
- * it was given, so a hook that sent the wrong shape would fail these tests.
+ * The hook drives @dreamlab-ai/ontomark-graph's real layout driver and
+ * vowl-wasm adapter (`createLayout(vowlEngine(mod))`); only the WASM module
+ * is a double here, an NggExplorer that records what it is given. Slices run
+ * on a manual scheduler passed through the hook's options. The real engine is
+ * exercised in tests/integration/engine.real.test.ts.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -12,76 +13,56 @@ import { renderHook, act } from '@testing-library/react';
 import { useWasmSimulation } from '@/hooks/useWasmSimulation';
 import { useGraphStore } from '@/stores/useGraphStore';
 import { useUIStore } from '@/stores/useUIStore';
+import { engineCounters } from '@/lib/debugHandle';
 import * as wasmModule from '@dreamlab-ai/vowl-wasm';
 
-/** Where the useFrame mock keeps the hook's frame callback. */
-const frameHost = globalThis as unknown as { __r3fFrameCallback: (() => void) | null };
+/** Ticks after which the double reports it has settled. */
+const FINISH_AT = 5;
 
-interface MockEngine {
-  loadOntology: ReturnType<typeof vi.fn>;
-  setCenter: ReturnType<typeof vi.fn>;
-  setLinkDistance: ReturnType<typeof vi.fn>;
-  setChargeStrength: ReturnType<typeof vi.fn>;
-  initSimulation: ReturnType<typeof vi.fn>;
+interface ExplorerDouble {
+  loadArrays: ReturnType<typeof vi.fn>;
+  setParam: ReturnType<typeof vi.fn>;
   tick: ReturnType<typeof vi.fn>;
-  runSimulation: ReturnType<typeof vi.fn>;
   isFinished: ReturnType<typeof vi.fn>;
-  getAlpha: ReturnType<typeof vi.fn>;
-  getNodeIds: ReturnType<typeof vi.fn>;
-  getNodePositions: ReturnType<typeof vi.fn>;
+  writePositionsInto: ReturnType<typeof vi.fn>;
+  reheat: ReturnType<typeof vi.fn>;
   free: ReturnType<typeof vi.fn>;
 }
 
-// Mock the WASM module under the specifier the hook actually imports.
-vi.mock('@dreamlab-ai/vowl-wasm', () => {
-  return {
-    default: vi.fn().mockResolvedValue(undefined),
-    // A `function`, not an arrow: the hook calls `new WebVowl()`, and vitest 4
-    // only lets a mock be constructed when its implementation is constructible.
-    WebVowl: vi.fn().mockImplementation(function () {
-      let ids: string[] = [];
-      let ticks = 0;
-      const engine = {
-        loadOntology: vi.fn((json: string) => {
-          const doc = JSON.parse(json);
-          if (!Array.isArray(doc.class)) throw "Parse error: Missing 'class' array";
-          if (!Array.isArray(doc.property)) throw "Parse error: Missing 'property' array";
-          ids = doc.class.map((c: { id: string }) => c.id);
-          ticks = 0;
-        }),
-        setCenter: vi.fn(),
-        setLinkDistance: vi.fn(),
-        setChargeStrength: vi.fn(),
-        initSimulation: vi.fn(() => {
-          ticks = 0;
-        }),
-        tick: vi.fn(() => {
-          ticks++;
-        }),
-        runSimulation: vi.fn(),
-        isFinished: vi.fn().mockReturnValue(false),
-        getAlpha: vi.fn(() => Math.pow(0.98, ticks)),
-        getNodeIds: vi.fn(() => [...ids]),
-        getNodePositions: vi.fn(() => {
-          const out = new Float32Array(ids.length * 2);
-          ids.forEach((_, i) => {
-            out[2 * i] = 300 * Math.cos(i) + ticks;
-            out[2 * i + 1] = 300 * Math.sin(i) - ticks;
-          });
-          return out;
-        }),
-        free: vi.fn()
-      };
-      return engine;
-    })
-  };
-});
+const versionHost = globalThis as unknown as { __vowlVersion: string };
+versionHost.__vowlVersion = '0.4.0';
 
-// Mock React Three Fiber's useFrame
-vi.mock('@react-three/fiber', () => ({
-  useFrame: vi.fn((callback) => {
-    // Store callback for manual triggering in tests
-    (globalThis as unknown as { __r3fFrameCallback: unknown }).__r3fFrameCallback = callback;
+vi.mock('@dreamlab-ai/vowl-wasm', () => ({
+  default: vi.fn().mockResolvedValue(undefined),
+  // The adapter reads the bundle version to decide which setParam keys exist.
+  version: vi.fn(() => (globalThis as unknown as { __vowlVersion: string }).__vowlVersion),
+  // A `function`, not an arrow: the adapter calls `new NggExplorer()`.
+  NggExplorer: vi.fn().mockImplementation(function () {
+    let seed = new Float32Array(0);
+    let ticks = 0;
+    const explorer = {
+      loadArrays: vi.fn((positions: Float32Array, a: Uint32Array, b: Uint32Array, kinds: Uint8Array) => {
+        if (a.length !== b.length || a.length !== kinds.length) throw 'loadArrays: edge arrays must be parallel';
+        seed = Float32Array.from(positions);
+        ticks = 0;
+      }),
+      setParam: vi.fn(),
+      tick: vi.fn(() => {
+        if (ticks < FINISH_AT) ticks++;
+      }),
+      isFinished: vi.fn(() => ticks >= FINISH_AT),
+      writePositionsInto: vi.fn((out: Float32Array) => {
+        for (let i = 0; i < out.length; i += 2) {
+          out[i] = seed[i] + ticks;
+          out[i + 1] = seed[i + 1] - ticks;
+        }
+      }),
+      reheat: vi.fn(() => {
+        ticks = 0;
+      }),
+      free: vi.fn()
+    };
+    return explorer;
   })
 }));
 
@@ -102,23 +83,47 @@ const SAMPLE = {
   ]
 };
 
-function latestEngine(): MockEngine {
-  const results = vi.mocked(wasmModule.WebVowl).mock.results;
-  return results[results.length - 1].value as MockEngine;
-}
+/** Same ids as SAMPLE, other springs: the driver would warm-start it from SAMPLE's positions. */
+const SAMPLE_REUSING_IDS = {
+  class: [
+    { id: 'a', type: 'owl:Class' },
+    { id: 'b', type: 'owl:Class' },
+    { id: 'lit', type: 'owl:Class' }
+  ],
+  property: [{ id: 'r', type: 'owl:objectProperty', domain: 'b', range: 'lit' }]
+};
 
-function frames(n: number) {
+let queue: Array<() => void> = [];
+const scheduler = {
+  schedule: (fn: () => void) => queue.push(fn),
+  cancel: () => {},
+  now: () => 0
+};
+
+/** Run scheduled slices until none is left (each slice ticks until settled or 60 ticks). */
+function drain(limit = 100) {
   act(() => {
-    for (let i = 0; i < n; i++) frameHost.__r3fFrameCallback?.();
+    for (let i = 0; i < limit && queue.length > 0; i++) queue.shift()!();
   });
 }
 
-async function mounted(options?: Parameters<typeof useWasmSimulation>[0]) {
-  const hook = renderHook(() => useWasmSimulation(options));
+function latestExplorer(): ExplorerDouble {
+  const results = vi.mocked(wasmModule.NggExplorer).mock.results;
+  return results[results.length - 1].value as ExplorerDouble;
+}
+
+async function mounted() {
+  const hook = renderHook(() => useWasmSimulation(scheduler));
   await vi.waitFor(() => {
     expect(hook.result.current.isInitialized).toBe(true);
   }, { timeout: 1000 });
   return hook;
+}
+
+function load(doc: unknown) {
+  act(() => {
+    useGraphStore.getState().loadOntology(doc);
+  });
 }
 
 describe('useWasmSimulation', () => {
@@ -126,267 +131,216 @@ describe('useWasmSimulation', () => {
     useGraphStore.getState().clear();
     useUIStore.setState({ notifications: [] });
     useUIStore.getState().resetSettings();
-    vi.mocked(wasmModule.WebVowl).mockClear();
-    frameHost.__r3fFrameCallback = null;
+    vi.mocked(wasmModule.NggExplorer).mockClear();
+    versionHost.__vowlVersion = '0.4.0';
+    queue = [];
+    engineCounters.loads = 0;
   });
 
   describe('Initialization', () => {
-    it('should initialize with default state', async () => {
+    it('starts idle with one explorer and nothing loaded', async () => {
       const { result } = await mounted();
       expect(result.current.isRunning).toBe(false);
-      expect(result.current.alpha).toBe(1.0);
+      expect(wasmModule.NggExplorer).toHaveBeenCalledTimes(1);
+      expect(latestExplorer().loadArrays).not.toHaveBeenCalled();
     });
 
-    it('should auto-start simulation when an ontology is loaded and autoStart is true', async () => {
-      const { result } = await mounted({ autoStart: true });
-
-      act(() => {
-        useGraphStore.getState().loadOntology(SAMPLE);
-      });
-
-      await vi.waitFor(() => {
-        expect(result.current.isRunning).toBe(true);
-      }, { timeout: 1000 });
-    });
-
-    it('should not auto-start when autoStart is false', async () => {
-      const { result } = await mounted({ autoStart: false });
-
-      act(() => {
-        useGraphStore.getState().loadOntology(SAMPLE);
-      });
-
-      expect(latestEngine().loadOntology).toHaveBeenCalledTimes(1);
-      expect(result.current.isRunning).toBe(false);
+    it('applies every layout setting from the UI store before the first graph', async () => {
+      await mounted();
+      const { layout } = useUIStore.getState().settings;
+      const sent = Object.fromEntries(latestExplorer().setParam.mock.calls);
+      expect(sent).toEqual(layout);
     });
   });
 
-  describe('Engine contract', () => {
-    it('feeds the engine the normalised {class, property} object, not {nodes, edges}', async () => {
+  describe('Input mapping', () => {
+    it('loads the store nodes in store order and every edge as a spring between their indices', async () => {
       await mounted();
-      act(() => {
-        useGraphStore.getState().loadOntology(SAMPLE);
-      });
+      load(SAMPLE);
 
-      const engine = latestEngine();
-      expect(engine.loadOntology).toHaveBeenCalledTimes(1);
-      const sent = JSON.parse(engine.loadOntology.mock.calls[0][0]);
-      expect(sent).toEqual(useGraphStore.getState().ontology!.engine);
-      expect(sent).not.toHaveProperty('nodes');
-      expect(sent.class.map((c: { label: string }) => c.label)).toEqual(['Agent', 'Body', 'Literal']);
-      expect(sent.property.map((p: { domain: string; range: string }) => [p.domain, p.range])).toEqual([
-        ['a', 'b'],
-        ['a', 'lit']
-      ]);
+      const e = latestExplorer();
+      expect(e.loadArrays).toHaveBeenCalledTimes(1);
+      const [positions, a, b, kinds] = e.loadArrays.mock.calls[0];
+      expect([...useGraphStore.getState().nodes.keys()]).toEqual(['a', 'b', 'lit']);
+      expect(positions).toHaveLength(6);
+      // p: a -> b, q: a -> lit, as undirected pairs keyed by the lower index.
+      expect([...a]).toEqual([0, 0]);
+      expect([...b]).toEqual([1, 2]);
+      expect([...kinds]).toEqual([0, 0]);
     });
 
-    it('engine node ids equal the store node ids', async () => {
+    it('writes each snapshot back to the node at the same index, in one store update', async () => {
       await mounted();
-      act(() => {
-        useGraphStore.getState().loadOntology(SAMPLE);
-      });
-      const engineIds = latestEngine().getNodeIds() as string[];
-      expect([...engineIds].sort()).toEqual([...useGraphStore.getState().nodes.keys()].sort());
-    });
+      load(SAMPLE);
+      const [seed] = latestExplorer().loadArrays.mock.calls[0] as [Float32Array];
 
-    it('applies the simulation settings after loadOntology (which resets them) and before initSimulation', async () => {
-      useUIStore.getState().updateSettings({ linkDistance: 140, chargeStrength: -500 });
-      await mounted();
-      act(() => {
-        useGraphStore.getState().loadOntology(SAMPLE);
-      });
+      let updates = 0;
+      const unsubscribe = useGraphStore.subscribe(() => updates++);
+      drain();
+      unsubscribe();
 
-      const e = latestEngine();
-      const load = e.loadOntology.mock.invocationCallOrder[0];
-      const init = e.initSimulation.mock.invocationCallOrder[0];
-      const lastLink = e.setLinkDistance.mock.invocationCallOrder.at(-1)!;
-      const lastCharge = e.setChargeStrength.mock.invocationCallOrder.at(-1)!;
-      expect(load).toBeLessThan(lastLink);
-      expect(lastLink).toBeLessThan(init);
-      expect(load).toBeLessThan(lastCharge);
-      expect(lastCharge).toBeLessThan(init);
-      expect(e.setLinkDistance).toHaveBeenLastCalledWith(140);
-      expect(e.setChargeStrength).toHaveBeenLastCalledWith(-500);
-    });
-
-    it('pushes the seeded positions to the store straight after initSimulation', async () => {
-      await mounted({ autoStart: false });
-      act(() => {
-        useGraphStore.getState().loadOntology(SAMPLE);
+      // One slice ticks to settled (FINISH_AT ticks) and reports once.
+      expect(updates).toBe(1);
+      const { nodes } = useGraphStore.getState();
+      ['a', 'b', 'lit'].forEach((id, i) => {
+        expect(nodes.get(id)!.position.x).toBeCloseTo(seed[2 * i] + FINISH_AT, 3);
+        expect(nodes.get(id)!.position.y).toBeCloseTo(seed[2 * i + 1] - FINISH_AT, 3);
       });
-      const a = useGraphStore.getState().nodes.get('a')!;
-      expect(a.position.x).toBeCloseTo(300, 3);
-      expect(a.position.y).toBeCloseTo(0, 3);
-      const b = useGraphStore.getState().nodes.get('b')!;
-      expect(b.position.x).toBeCloseTo(300 * Math.cos(1), 3);
     });
   });
 
   describe('Topology lifetime', () => {
-    it('ticks write positions but never reload or re-initialise the engine', async () => {
-      const { result } = await mounted({ autoStart: true });
-      act(() => {
-        useGraphStore.getState().loadOntology(SAMPLE);
-      });
-      await vi.waitFor(() => expect(result.current.isRunning).toBe(true));
-      const version = useGraphStore.getState().graphVersion;
-
-      frames(60);
-
-      const e = latestEngine();
-      expect(e.tick).toHaveBeenCalledTimes(60);
-      expect(e.loadOntology).toHaveBeenCalledTimes(1);
-      expect(e.initSimulation).toHaveBeenCalledTimes(1);
-      expect(useGraphStore.getState().graphVersion).toBe(version);
-      // The store holds the 60th frame's positions.
-      expect(useGraphStore.getState().nodes.get('a')!.position.x).toBeCloseTo(360, 3);
-      expect(result.current.alpha).toBeCloseTo(Math.pow(0.98, 60), 6);
+    it('runs from a load until the layout settles', async () => {
+      const { result } = await mounted();
+      load(SAMPLE);
+      expect(result.current.isRunning).toBe(true);
+      drain();
+      expect(result.current.isRunning).toBe(false);
+      expect(engineCounters.settled).toBe(true);
     });
 
-    it('reloads the engine once per new file', async () => {
+    it('position updates never reload the engine or bump graphVersion', async () => {
       await mounted();
+      load(SAMPLE);
+      const version = useGraphStore.getState().graphVersion;
+      drain();
       act(() => {
-        useGraphStore.getState().loadOntology(SAMPLE);
+        useGraphStore.getState().updateNodePositions(['a'], [1, 2]);
+        useGraphStore.getState().selectNode('a');
       });
-      frames(5);
-      act(() => {
-        useGraphStore.getState().loadOntology({ class: [{ id: 'x', type: 'owl:Class' }], property: [] });
-      });
-      frames(5);
+      drain();
+      expect(latestExplorer().loadArrays).toHaveBeenCalledTimes(1);
+      expect(useGraphStore.getState().graphVersion).toBe(version);
+      expect(engineCounters.loads).toBe(1);
+    });
 
-      const e = latestEngine();
-      expect(e.loadOntology).toHaveBeenCalledTimes(2);
-      expect(e.initSimulation).toHaveBeenCalledTimes(2);
-      expect(e.getNodeIds()).toEqual(['x']);
+    it('loads each new file once and cold, even when it reuses the previous ids', async () => {
+      const { result } = await mounted();
+      load(SAMPLE);
+      drain();
+      const e = latestExplorer();
+      load(SAMPLE_REUSING_IDS);
+
+      expect(e.loadArrays).toHaveBeenCalledTimes(2);
+      expect(engineCounters.loads).toBe(2);
+      // Not seeded from SAMPLE's settled positions, and not a warm restart.
+      expect(e.reheat).not.toHaveBeenCalled();
+      const [first] = e.loadArrays.mock.calls[0] as [Float32Array];
+      const [second] = e.loadArrays.mock.calls[1] as [Float32Array];
+      expect([...second]).toEqual([...first]);
+      expect(result.current.isRunning).toBe(true);
+      drain();
+      expect(result.current.isRunning).toBe(false);
+    });
+
+    it('reloads the same file when it is opened again', async () => {
+      const { result } = await mounted();
+      load(SAMPLE);
+      drain();
+      load(SAMPLE);
+      expect(latestExplorer().loadArrays).toHaveBeenCalledTimes(2);
+      expect(result.current.isRunning).toBe(true);
+      drain();
+      expect(result.current.isRunning).toBe(false);
     });
 
     it('stops when the graph is cleared, without loading an empty graph', async () => {
       const { result } = await mounted();
-      act(() => {
-        useGraphStore.getState().loadOntology(SAMPLE);
-      });
+      load(SAMPLE);
       act(() => {
         useGraphStore.getState().clear();
       });
-
-      expect(latestEngine().loadOntology).toHaveBeenCalledTimes(1);
+      drain();
+      expect(latestExplorer().loadArrays).toHaveBeenCalledTimes(1);
       expect(result.current.isRunning).toBe(false);
+      // The cleared graph's pending slice reported nothing.
+      expect(useGraphStore.getState().nodes.size).toBe(0);
     });
+  });
 
-    it('stops once the engine reports it has finished', async () => {
+  describe('Settings updates', () => {
+    it('sends only the changed key and restarts a settled layout warm', async () => {
       const { result } = await mounted();
-      act(() => {
-        useGraphStore.getState().loadOntology(SAMPLE);
-      });
-      latestEngine().isFinished.mockReturnValue(true);
-      frames(1);
-      expect(result.current.isRunning).toBe(false);
-      expect(result.current.alpha).toBe(0);
-    });
-  });
+      load(SAMPLE);
+      drain();
+      const e = latestExplorer();
+      e.setParam.mockClear();
 
-  describe('Control Functions', () => {
-    it('should start simulation', async () => {
-      const { result } = await mounted({ autoStart: false });
       act(() => {
-        result.current.start();
+        useUIStore.getState().updateLayout({ collideRadius: 14 });
       });
+
+      expect(e.setParam.mock.calls).toEqual([['collideRadius', 14]]);
+      expect(e.reheat).toHaveBeenCalledTimes(1);
       expect(result.current.isRunning).toBe(true);
-    });
-
-    it('should stop simulation', async () => {
-      const { result } = await mounted({ autoStart: true });
-      act(() => {
-        useGraphStore.getState().loadOntology(SAMPLE);
-      });
-      act(() => {
-        result.current.stop();
-      });
+      drain();
       expect(result.current.isRunning).toBe(false);
     });
 
-    it('should reset simulation', async () => {
-      const { result } = await mounted({ autoStart: true });
+    it('restores the defaults on resetSettings', async () => {
+      await mounted();
       act(() => {
-        useGraphStore.getState().loadOntology(SAMPLE);
+        useUIStore.getState().updateLayout({ linkDistance: 90, charge: 500 });
       });
-      frames(10);
-
+      const e = latestExplorer();
+      e.setParam.mockClear();
       act(() => {
-        result.current.reset();
+        useUIStore.getState().resetSettings();
       });
-
-      expect(latestEngine().initSimulation).toHaveBeenCalledTimes(2);
-      expect(latestEngine().loadOntology).toHaveBeenCalledTimes(1);
-      expect(result.current.alpha).toBe(1.0);
-      expect(result.current.isRunning).toBe(true);
-    });
-
-    it('should perform single step', async () => {
-      const { result } = await mounted({ autoStart: false });
-      act(() => {
-        useGraphStore.getState().loadOntology(SAMPLE);
-      });
-      act(() => {
-        result.current.step();
-      });
-      expect(latestEngine().tick).toHaveBeenCalledTimes(1);
-      expect(result.current.isRunning).toBe(false);
+      expect(Object.fromEntries(e.setParam.mock.calls)).toEqual({ linkDistance: 60, charge: 2000 });
     });
   });
 
-  describe('Settings Updates', () => {
-    it('should update simulation when settings change', async () => {
-      await mounted();
-      act(() => {
-        useUIStore.getState().updateSettings({ linkDistance: 200 });
-      });
-      expect(latestEngine().setLinkDistance).toHaveBeenLastCalledWith(200);
-    });
-  });
-
-  describe('Error Handling', () => {
-    it('surfaces an engine load error as a visible notification', async () => {
+  describe('Error handling', () => {
+    it('surfaces an engine load error as a visible notification and stops', async () => {
       const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
-      await mounted();
-      latestEngine().loadOntology.mockImplementationOnce(() => {
-        throw 'Graph error: Node \'x\' not found';
+      const { result } = await mounted();
+      latestExplorer().loadArrays.mockImplementationOnce(() => {
+        throw 'loadArrays: edge 0 (0, 9) names a node outside 0..3';
       });
 
-      act(() => {
-        useGraphStore.getState().loadOntology(SAMPLE);
-      });
-
-      const { notifications } = useUIStore.getState();
-      expect(notifications).toContainEqual(expect.objectContaining({
-        type: 'error',
-        message: expect.stringContaining("Node 'x' not found")
-      }));
-      expect(latestEngine().initSimulation).not.toHaveBeenCalled();
-      consoleError.mockRestore();
-    });
-
-    it('surfaces an engine/store node-set mismatch as an error', async () => {
-      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
-      await mounted();
-      latestEngine().getNodeIds.mockReturnValueOnce(['a']);
-
-      act(() => {
-        useGraphStore.getState().loadOntology(SAMPLE);
-      });
+      load(SAMPLE);
 
       expect(useUIStore.getState().notifications).toContainEqual(expect.objectContaining({
         type: 'error',
-        message: expect.stringContaining('disagree on the node set')
+        message: expect.stringContaining('names a node outside')
+      }));
+      expect(result.current.isRunning).toBe(false);
+      consoleError.mockRestore();
+    });
+
+    it('stops and notifies on a tick error', async () => {
+      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const { result } = await mounted();
+      load(SAMPLE);
+      latestExplorer().tick.mockImplementationOnce(() => {
+        throw 'tick failed';
+      });
+
+      drain();
+
+      expect(result.current.isRunning).toBe(false);
+      expect(useUIStore.getState().notifications).toContainEqual(expect.objectContaining({
+        type: 'error',
+        message: expect.stringContaining('tick failed')
       }));
       consoleError.mockRestore();
     });
 
-    it('should handle WASM initialization failure visibly', async () => {
+    it('warns when the engine cannot apply a layout setting', async () => {
+      versionHost.__vowlVersion = '0.3.0';
+      await mounted();
+      expect(useUIStore.getState().notifications).toContainEqual(expect.objectContaining({
+        type: 'warning',
+        message: expect.stringContaining('collideRadius')
+      }));
+    });
+
+    it('reports a WASM initialisation failure visibly', async () => {
       const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
       vi.mocked(wasmModule.default).mockRejectedValueOnce(new Error('WASM initialization failed'));
 
-      const { result } = renderHook(() => useWasmSimulation());
+      const { result } = renderHook(() => useWasmSimulation(scheduler));
 
       await vi.waitFor(() => {
         expect(consoleError).toHaveBeenCalledWith('Failed to initialize WASM:', expect.any(Error));
@@ -398,34 +352,17 @@ describe('useWasmSimulation', () => {
       }));
       consoleError.mockRestore();
     });
-
-    it('stops and notifies on a simulation tick error', async () => {
-      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
-      const { result } = await mounted();
-      act(() => {
-        useGraphStore.getState().loadOntology(SAMPLE);
-      });
-      latestEngine().tick.mockImplementationOnce(() => {
-        throw 'tick failed';
-      });
-
-      frames(1);
-
-      expect(result.current.isRunning).toBe(false);
-      expect(useUIStore.getState().notifications).toContainEqual(expect.objectContaining({
-        type: 'error',
-        message: expect.stringContaining('tick failed')
-      }));
-      consoleError.mockRestore();
-    });
   });
 
   describe('Cleanup', () => {
-    it('frees the engine on unmount', async () => {
+    it('frees the explorer once on unmount and reports nothing afterwards', async () => {
       const { unmount } = await mounted();
-      const engine = latestEngine();
+      load(SAMPLE);
+      const e = latestExplorer();
       unmount();
-      expect(engine.free).toHaveBeenCalledTimes(1);
+      drain();
+      expect(e.free).toHaveBeenCalledTimes(1);
+      expect(e.tick).not.toHaveBeenCalled();
     });
   });
 });

@@ -35,13 +35,13 @@ interface GraphState {
   // Statistics
   statistics: GraphStatistics | null;
 
-  /** The normalised ontology the graph was built from. The simulation hook
-   *  feeds `ontology.engine` to the WASM engine, so store and engine are
-   *  built from one object. Null when nothing is loaded. */
+  /** The normalised ontology the graph was built from. The layout hook maps
+   *  the same object onto the layout input (`toLayoutGraph`), so the store and
+   *  the layout agree on nodes and their order. Null when nothing is loaded. */
   ontology: NormalisedOntology | null;
 
   /** Bumped by `loadOntology` and `clear` only, never by position or
-   *  selection updates. The simulation hook keys its engine (re)load on it. */
+   *  selection updates. The layout hook keys its engine (re)load on it. */
   graphVersion: number;
 
   // Actions

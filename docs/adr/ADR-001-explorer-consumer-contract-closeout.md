@@ -170,3 +170,91 @@ Stays open:
 - **Engine.** The hook is unchanged, and WasmVOWL is the only consumer of the `WebVowl` simulator; the other explorers use `NggExplorer`. The likely next step is to move WasmVOWL onto `NggExplorer` rather than add forces to `WebVowl`. A parked draft (DreamLab-AI/vowl-wasm#5) records collision, positional-gravity and annealing setters for `WebVowl` with fixture evidence, in case that move does not happen.
 - Keyboard access, search/filter/selection/export acceptance, measured performance and publisher lineage, as before.
 
+
+## Layout on NggExplorer — 2026-11-23
+
+Branch `feat/ngg-layout` (base `ab9122e`), part of the operator-approved convergence pass. WasmVOWL no longer uses vowl-wasm's `WebVowl` simulator. `modern/src/hooks/useWasmSimulation.ts` lays the graph out with `NggExplorer` through `@dreamlab-ai/ontomark-graph`'s driver, `createLayout(vowlEngine(mod), { params })`. That is the simulator and the adapter the narrativegoldmine explorer, ontomark-obsidian and the vellum/VS Code editors use, so every vowl-wasm consumer now runs one simulator. The proposed/partial/inactive axes are unchanged.
+
+**Pins.**
+
+- `@dreamlab-ai/vowl-wasm` `0.4.0`, exact, from npm with provenance. Lock integrity `sha512-uWa3vooS…7SBPmg==`; tarball sha256 `727ac725…12301`, equal to the GitHub release asset.
+- `@dreamlab-ai/ontomark-graph` `0.4.0`, from its GitHub release asset only (it is not on npm). Lock integrity `sha512-AAq/tNvB…GNzZwg==`; tarball sha256 `af471336…87f0`.
+
+**Input mapping** (`modern/src/lib/layoutGraph.ts`, `toLayoutGraph`):
+
+- Nodes: every normalised node in normaliser order, which is the order the store inserts them. That covers classes, the shared `owl:Thing`, set-operator classes, and datatypes and literals (declared, or synthesised per edge). Layout index `i` is `ids[i]`. The driver reports interleaved `x, y` in that order, and the hook writes each snapshot to the store in one `updateNodePositions(ids, xy)` call.
+- Edges: every normalised edge becomes `source -> target`. That covers object and datatype properties, subclass, disjointness and generated set-operator edges. Each is one undirected spring of equal weight. The vowl-wasm adapter sends every edge with type 0, so the edge kind affects drawing only.
+- The driver drops self-loops and merges repeated and reversed pairs. The store keeps and draws every edge. Springs against store edges per file:
+
+  | File | Springs / edges | Self-loops |
+  |---|---|---|
+  | benchmark | 39 / 86 | 14 |
+  | foaf | 50 / 74 | 7 |
+  | goodrelations | 437 / 461 | 14 |
+  | muto | 14 / 26 | 5 |
+  | ontovibe | 55 / 70 | 6 |
+  | personasonto | 225 / 247 | 2 |
+  | sioc | 64 / 125 | 29 |
+
+- The normaliser's `engine` payload (the `{ class, property }` document `WebVowl.loadOntology` parsed) is deleted with its types. It had no other reader.
+
+**Hook behaviour.**
+
+- The hook owns one driver and one explorer, created after the module initialises. Each new `graphVersion` (load or clear) first clears the driver with an empty graph, then sets the new graph, so every opened file is one cold load. Without the empty graph, the driver seeds nodes whose ids it already knows from the last file and restarts warm. owl2vowl ids are small numbers, so unrelated files share many. It would also skip a graph identical to the last one, so reopening a file would never settle again.
+- `isRunning` runs from the load to the driver's `onSettled`, which drives the camera's settle fit.
+- Errors become visible notifications, and they stop the run: a failed load, a tick that throws, a non-finite position, the driver rejecting the graph, or the module failing to initialise. A setting the engine cannot apply becomes a warning.
+- The driver ticks in time-boxed animation-frame slices (6 ms or 60 ticks), so `useFrame` no longer drives the layout. The overlay says "Laying out…" without a percentage, because the driver exposes no alpha.
+- Removed as unused:
+  - the `start`/`stop`/`reset`/`step` controls;
+  - the `autoStart`/`iterations` options;
+  - the per-file `sameIds` check: ids and store come from one object, and the driver validates uniqueness.
+
+**Settings.** `GraphSettings.layout` holds `NggExplorer` `setParam` keys: `charge` 2000, `linkDistance` 60 (the vowl-wasm 0.4.0 defaults), and `RECOMMENDED_LAYOUT_PARAMS` (`collideRadius` 21, `collideStrength` 0.7, `collideIterations` 3, `componentGravity` 0.1). Every key is always sent, so `resetSettings` restores the engine exactly. `updateLayout(partial)` tunes them live: the hook sends only the changed keys, and the driver restarts a loaded layout warm.
+
+- `linkDistance` maps to `linkDistance`. It is the same quantity, but it now uses the engine default of 60 instead of 100, which was tuned for the other force model.
+- `chargeStrength` −300 is removed in favour of `charge`. WebVowl's d3-style sign (negative repels) and scale do not carry over: sending −300 to `NggExplorer` would make nodes attract each other.
+- `gravity` and `friction` are removed. Nothing ever read them. `NggExplorer`'s `centerGravity` and `damping` stay at the engine defaults.
+
+**Real-engine evidence** (`modern/tests/integration/engine.real.test.ts`, Node, the store's default layout settings, driver at one tick per slice on a manual scheduler).
+
+- The pinned bundle reports `0.4.0` and applies every setting the app sends.
+- For each of the seven non-empty corpus files:
+  - one engine load;
+  - layout indices equal the store ids in order, and the springs equal the store edges minus self-loops and merged pairs;
+  - settled before 2000 ticks (it takes 300);
+  - every coordinate finite and below 10 × link distance × √n (peaks 100 to 283);
+  - minimum pair distance at least 2 × 21 − 1. The measured minimum is 41.67 (goodrelations) to 42.00 (muto). With collision off, the same graphs settle with minimum distances of 4.9 to 33.3, so the assertion discriminates.
+  - the last tick moves no node more than 0.05 × link distance (measured at most 0.095).
+- The 12-node chain stays as the hub-free control.
+- Unit tests (`useWasmSimulation.test.ts`) run the real driver and adapter against an `NggExplorer` double. They cover:
+  - index mapping and bulk updates;
+  - one load per file, cold even when the next file reuses the ids, and reloading the same file;
+  - clear;
+  - live settings and reset;
+  - every error path;
+  - cleanup.
+
+**Browser evidence.** Vite dev server (`NODE_ENV=development`, `?debug`), browser sidecar, 1920×993, with the page in front (a background tab throttles animation frames). The legacy foaf, goodrelations and sioc files were loaded through the debug handle, and positions were read after `settled` plus 1.5 s. "Overlapping" means two node centres closer than the sum of their drawn disc radii (20 each; no node in these files has instances). The "with border" column adds the 2-unit border ring of each disc. The "before" rows are vowl-wasm 0.3.0 `WebVowl` at link distance 100 and charge −300, reproduced in Node. Their extents equal the camera, labels and CI run above, so they are the layouts in those screenshots. The "after" rows were measured in the browser and match the Node run exactly.
+
+| File | Before: overlapping pairs (with border), min pair | After: overlapping pairs (with border), min pair | After: extent x, y | After: settle time on the sidecar |
+|---|---|---|---|---|
+| foaf | 34 (43), 11.8 | 0 (134), 41.98 | −169…144, −161…143 | 6.1 s |
+| goodrelations | 536 (667), 9.4 | 0 (358), 41.67 | −254…283, −283…278 | about 40 s |
+| sioc | 33 (39), 15.0 | 0 (121), 41.99 | −154…163, −124…138 | 7.3 s |
+
+- One engine load per file. No console errors or warnings, and no notifications. At the default camera after settling, each graph is framed in the free area.
+- Disconnected components are pulled in around the main graph (`componentGravity`). foaf's ring of isolated nodes and goodrelations' separate `Thing`/`Literal` component now sit at the edge of the main body.
+- The screenshots and measurements are kept outside the repo, in the agent session's scratch directory (`browser-evidence-wasmvowl-ngg/`).
+
+**Layout acceptance.**
+
+- **No disc overlaps: met.** All three files have zero overlapping pairs, down from 34, 536 and 33.
+- **Readable: partial.** Collision radius 21 packs nodes about 42 apart, edge to edge for WasmVOWL's 20-unit discs. The border rings touch or overlap by up to 2 units, which is why the border column rises. Layouts are also about half as wide as before (charge 2000 at link distance 60), so the default camera frames them closer. Labels now overlap neighbouring discs more often than before, and goodrelations' core is still dense.
+- **Collision radius 23** would clear the borders: zero overlapping pairs with border on all three files, minimum pair distance 45.1 to 46.0 (Node probe). It is not applied, because this change adopts the shared `RECOMMENDED_LAYOUT_PARAMS` as briefed. It is a one-line `updateLayout({ collideRadius: 23 })` or default change if WasmVOWL should diverge from the other consumers.
+
+**Performance observation.** On the sidecar, goodrelations renders at about 2.7 frames per second while the layout runs, and 22 when idle. Each snapshot re-renders every node and edge, so the 6 ms tick budget per frame is a small share of each frame. This is an observation, not a benchmark. Moving the driver into a worker, or cutting the re-render cost per snapshot, is separate work.
+
+Stays open:
+
+- Label-over-disc overlap and goodrelations' density; the collision-radius choice above.
+- Keyboard access, search/filter/selection/export acceptance, measured performance and publisher lineage, as before.

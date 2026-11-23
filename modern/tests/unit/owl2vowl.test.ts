@@ -1,11 +1,11 @@
 /**
  * Unit tests for the owl2vowl normaliser: one decision per edge case.
  *
- * The normaliser turns an owl2vowl / WebVOWL JSON document into the merged
- * `{ class, property }` shape the vowl-wasm engine accepts, plus the node and
- * edge records the graph store renders. Every case below is a rule the
- * engine or the VOWL notation forces; the real-engine file
- * (tests/integration/engine.real.test.ts) checks the nine legacy ontologies.
+ * The normaliser turns an owl2vowl / WebVOWL JSON document into the node and
+ * edge records the graph store renders and the layout is built from. Every
+ * case below is a rule the VOWL notation or the layout input forces; the
+ * real-engine file (tests/integration/engine.real.test.ts) checks the nine
+ * legacy ontologies.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -34,10 +34,10 @@ describe('normaliseOwl2Vowl', () => {
         property: []
       });
 
-      expect(n.engine.class).toEqual([
-        { id: '1', type: 'owl:Class', label: 'Agent (en)', iri: 'http://xmlns.com/foaf/0.1/Agent' }
-      ]);
-      expect(node(n, '1')).toMatchObject({ kind: 'class', vowlType: 'owl:Class', label: 'Agent (en)' });
+      expect(n.nodes).toHaveLength(1);
+      expect(node(n, '1')).toMatchObject({
+        kind: 'class', vowlType: 'owl:Class', label: 'Agent (en)', iri: 'http://xmlns.com/foaf/0.1/Agent'
+      });
     });
 
     it('takes domain, range and label from propertyAttribute', () => {
@@ -48,10 +48,8 @@ describe('normaliseOwl2Vowl', () => {
         propertyAttribute: [{ id: 'p', domain: 'a', range: 'b', label: { 'IRI-based': 'knows' } }]
       });
 
-      expect(n.engine.property).toEqual([
-        expect.objectContaining({ id: 'p', type: 'owl:ObjectProperty', label: 'knows', domain: 'a', range: 'b' })
-      ]);
-      expect(edge(n, 'p')).toMatchObject({ source: 'a', target: 'b', kind: 'objectProperty', endpoints: 'declared' });
+      expect(n.edges).toHaveLength(1);
+      expect(edge(n, 'p')).toMatchObject({ source: 'a', target: 'b', kind: 'objectProperty', label: 'knows', endpoints: 'declared' });
     });
 
     it('lets fields on the base record win over the attribute record (WebVOWL addAdditionalAttributes)', () => {
@@ -75,12 +73,12 @@ describe('normaliseOwl2Vowl', () => {
       });
 
       expect(node(n, 'Org').label).toBe('Organisation');
-      expect(n.engine.property[0]).toMatchObject({ domain: 'Person', range: 'Org' });
+      expect(edge(n, 'worksFor')).toMatchObject({ source: 'Person', target: 'Org' });
     });
   });
 
   describe('labels', () => {
-    it('never hands the engine an empty label', () => {
+    it('never leaves a node with an empty label', () => {
       const n = normaliseOwl2Vowl({
         class: [
           { id: 'x', type: 'owl:Class', label: '' },
@@ -96,7 +94,7 @@ describe('normaliseOwl2Vowl', () => {
         property: []
       });
 
-      const labels = Object.fromEntries(n.engine.class.map((c) => [c.id, c.label]));
+      const labels = Object.fromEntries(n.nodes.map((v) => [v.id, v.label]));
       expect(labels).toEqual({
         x: 'x', y: 'Thingy', z: 'Literal', t: 'Thing',
         u: 'Union', i: 'Intersection', c: 'Complement', d: 'Disjoint union', a: 'Anonymous class'
@@ -129,7 +127,7 @@ describe('normaliseOwl2Vowl', () => {
       expect(node(n, 'lit')).toMatchObject({ kind: 'literal', vowlType: 'rdfs:Literal', label: 'Literal' });
       expect(node(n, 'dt')).toMatchObject({ kind: 'datatype', vowlType: 'rdfs:Datatype', label: 'string' });
       expect(edge(n, 'p1').kind).toBe('datatypeProperty');
-      expect(n.engine.class.map((c) => c.type)).toEqual(['owl:Class', 'rdfs:Literal', 'rdfs:Datatype']);
+      expect(n.nodes.map((v) => v.vowlType)).toEqual(['owl:Class', 'rdfs:Literal', 'rdfs:Datatype']);
     });
 
     it('gives an undeclared datatype range (xsd:, XML Schema IRI, rdfs:Literal) its own datatype node per edge', () => {
@@ -207,7 +205,6 @@ describe('normaliseOwl2Vowl', () => {
       expect(edge(n, 'neither')).toMatchObject({ source: OWL_THING_ID, target: OWL_THING_ID });
       expect(n.nodes.filter((v) => v.id === OWL_THING_ID)).toHaveLength(1);
       expect(node(n, OWL_THING_ID)).toMatchObject({ vowlType: 'owl:Thing', label: 'Thing', synthetic: true });
-      expect(n.engine.class.map((c) => c.id)).toContain(OWL_THING_ID);
       expect(n.report.thingFallbacks.sort()).toEqual(['neither', 'noDomain', 'noRange']);
     });
   });
@@ -223,7 +220,6 @@ describe('normaliseOwl2Vowl', () => {
         ['p', 'a', 'c'],
         ['p#1', 'b', 'c']
       ]);
-      expect(n.engine.property.map((p) => p.id)).toEqual(['p', 'p#1']);
       expect(n.report.expanded).toEqual(['p']);
     });
   });
@@ -257,7 +253,6 @@ describe('normaliseOwl2Vowl', () => {
       });
       expect(edge(n, `p${ids.indexOf('owl:FunctionalProperty')}`).characteristics.functional).toBe(true);
       expect(edge(n, `p${ids.indexOf('owl:TransitiveProperty')}`).characteristics.transitive).toBe(true);
-      expect(n.engine.property.find((p) => p.id === `p${ids.indexOf('rdfs:SubClassOf')}`)?.type).toBe('subclass');
     });
 
     it('reads characteristics from the attributes list too', () => {
@@ -266,7 +261,6 @@ describe('normaliseOwl2Vowl', () => {
         property: [{ id: 'p', type: 'owl:objectProperty', domain: 'a', range: 'a', attributes: ['functional', 'symmetric'] }]
       });
       expect(edge(n, 'p').characteristics).toMatchObject({ functional: true, symmetric: true, transitive: false });
-      expect(n.engine.property[0]).toMatchObject({ functional: true, symmetric: true });
     });
 
     it('keeps subclass and disjoint relations where owl2vowl puts them: in the property list', () => {
@@ -327,25 +321,13 @@ describe('normaliseOwl2Vowl', () => {
   });
 
   describe('document shape', () => {
-    it('always gives the engine both arrays, even for a document with neither', () => {
+    it('gives an empty graph for a document with neither array', () => {
       const n = normaliseOwl2Vowl({ header: { iri: 'http://ex.org/empty' }, namespace: [] });
-      expect(n.engine.class).toEqual([]);
-      expect(n.engine.property).toEqual([]);
       expect(n.nodes).toEqual([]);
+      expect(n.edges).toEqual([]);
       expect(n.metadata.iri).toBe('http://ex.org/empty');
     });
 
-    it('never passes inverseOf to the engine (it would add a second edge reusing the inverse id)', () => {
-      const n = normaliseOwl2Vowl({
-        class: [{ id: 'a', type: 'owl:Class' }],
-        property: [
-          { id: 'p', type: 'owl:ObjectProperty', domain: 'a', range: 'a', inverse: 'q' },
-          { id: 'q', type: 'owl:ObjectProperty', domain: 'a', range: 'a', inverse: 'p' }
-        ]
-      });
-      expect(JSON.stringify(n.engine)).not.toContain('inverse');
-      expect(edge(n, 'p').inverse).toBe('q');
-    });
 
     it('rejects input that is not a JSON object, and a class field that is not an array', () => {
       expect(() => normaliseOwl2Vowl(null)).toThrow(/not an owl2vowl document/);

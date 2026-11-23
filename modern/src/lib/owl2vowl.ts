@@ -5,11 +5,10 @@
  * record in `class` / `property` / `datatype` carrying the id and type, and an
  * attribute record in `classAttribute` / `propertyAttribute` /
  * `datatypeAttribute` carrying the label, IRI, domain, range and the rest.
- * The vowl-wasm engine reads only `class` and `property`, wants a string
- * `label`, `domain` and `range` on each record, and refuses an edge whose
- * endpoint is not a node. This module merges the two halves once and returns
- * both the engine payload and the node and edge records the graph store
- * renders, so the two can never disagree.
+ * This module merges the two halves once and returns the node and edge
+ * records the graph store renders; `toLayoutGraph` (src/lib/layoutGraph.ts)
+ * maps the same records onto the layout engine's input, so the drawing and
+ * the layout can never disagree.
  *
  * Decisions, one per edge case (each has a unit test in
  * tests/unit/owl2vowl.test.ts):
@@ -28,7 +27,7 @@
  *   `Thing`, and `Union` / `Intersection` / `Complement` / `Disjoint union`
  *   for anonymous set-operator classes, `Anonymous class` for other classes
  *   owl2vowl marks anonymous); then the id. `labelSource` records
- *   which. The engine never receives an empty label.
+ *   which. No node is left with an empty label.
  * - A property missing its domain or range first takes the swapped endpoints
  *   of its inverse property (named on either side, WebVOWL
  *   `createPropertyStructure`); failing that, the missing end is attached to
@@ -44,9 +43,8 @@
  *   `addSetOperatorProperties`).
  * - Equivalent classes are kept as their own nodes (WebVOWL merges them into
  *   one; not done here).
- * - `inverse` is kept on the store edge but never sent to the engine: the
- *   engine would add a second edge reusing the inverse's id, and the inverse
- *   property is already in the list.
+ * - `inverse` is kept on the store edge only; the inverse property is its
+ *   own edge in the list.
  * - Dropped, and recorded in `report.dropped` (and logged by the caller):
  *   records with an empty id, a repeated id (the first wins), and edges whose
  *   endpoint names no node.
@@ -75,35 +73,6 @@ function datatypeRef(ref: string): { vowlType: string; label: string; iri: strin
     return { vowlType: 'rdfs:Datatype', label: `xsd:${ref.slice(XSD_IRI.length)}`, iri: ref };
   }
   return undefined;
-}
-
-/** A class record in the shape the vowl-wasm engine parses. */
-export interface EngineClass {
-  id: string;
-  type: string;
-  label: string;
-  iri?: string;
-}
-
-/** A property record in the shape the vowl-wasm engine parses. */
-export interface EngineProperty {
-  id: string;
-  type: string;
-  label: string;
-  iri?: string;
-  domain: string;
-  range: string;
-  functional?: boolean;
-  inverseFunctional?: boolean;
-  transitive?: boolean;
-  symmetric?: boolean;
-}
-
-/** The exact document handed to `WebVowl.loadOntology` (after JSON.stringify). */
-export interface EngineOntology {
-  header: { iri?: string; title?: string; version?: string };
-  class: EngineClass[];
-  property: EngineProperty[];
 }
 
 export interface PropertyCharacteristics {
@@ -177,7 +146,6 @@ export interface NormalisationReport {
 export interface NormalisedOntology {
   /** Marker so the store can tell a normalised object from a raw document. */
   readonly normalised: true;
-  engine: EngineOntology;
   nodes: NormalisedNode[];
   edges: NormalisedEdge[];
   metadata: { title?: string; iri?: string; version?: string; description?: string };
@@ -220,17 +188,6 @@ const EDGE_KIND: Record<string, EdgeType> = {
   'owl:inversefunctionalproperty': 'objectProperty',
   'owl:transitiveproperty': 'objectProperty',
   'owl:symmetricproperty': 'objectProperty'
-};
-
-/** Store edge kind -> the type string the engine is given. */
-const ENGINE_PROPERTY_TYPE: Record<EdgeType, string> = {
-  objectProperty: 'owl:ObjectProperty',
-  datatypeProperty: 'owl:DatatypeProperty',
-  // The engine classifies a special property as a subclass edge when its type
-  // contains the lower-case substring "subclass".
-  subclass: 'subclass',
-  disjoint: 'owl:disjointWith',
-  setOperator: 'setOperatorProperty'
 };
 
 const DEFAULT_EDGE_LABEL: Partial<Record<EdgeType, string>> = {
@@ -547,7 +504,7 @@ export function normaliseOwl2Vowl(doc: unknown): NormalisedOntology {
     e.target = id;
   }
 
-  // Edges whose endpoint names no node cannot be drawn and the engine refuses them.
+  // Edges whose endpoint names no node can be neither drawn nor laid out.
   const kept: NormalisedEdge[] = [];
   for (const e of edges) {
     if (!nodeIds.has(e.source)) {
@@ -559,7 +516,7 @@ export function normaliseOwl2Vowl(doc: unknown): NormalisedOntology {
     }
   }
 
-  // ---- metadata and engine payload ----------------------------------------
+  // ---- metadata ----------------------------------------------------------
   const header = isRecord(doc.header) ? doc.header : {};
   const metadata = {
     title: pickText(header.title),
@@ -568,35 +525,10 @@ export function normaliseOwl2Vowl(doc: unknown): NormalisedOntology {
     description: pickText(header.description)
   };
 
-  const engine: EngineOntology = {
-    header: { iri: metadata.iri, title: metadata.title, version: metadata.version },
-    class: nodes.map((v) => {
-      const c: EngineClass = { id: v.id, type: v.vowlType, label: v.label };
-      if (v.iri) c.iri = v.iri;
-      return c;
-    }),
-    property: kept.map((e) => {
-      const p: EngineProperty = {
-        id: e.id,
-        type: ENGINE_PROPERTY_TYPE[e.kind],
-        label: e.label === '' ? e.id : e.label,
-        domain: e.source,
-        range: e.target
-      };
-      if (e.iri) p.iri = e.iri;
-      const c = e.characteristics;
-      if (c.functional) p.functional = true;
-      if (c.inverseFunctional) p.inverseFunctional = true;
-      if (c.transitive) p.transitive = true;
-      if (c.symmetric) p.symmetric = true;
-      return p;
-    })
-  };
-
-  return { normalised: true, engine, nodes, edges: kept, metadata, report };
+  return { normalised: true, nodes, edges: kept, metadata, report };
 }
 
 /** True for an object produced by [`normaliseOwl2Vowl`]. */
 export function isNormalisedOntology(v: unknown): v is NormalisedOntology {
-  return isRecord(v) && v.normalised === true && isRecord(v.engine) && Array.isArray(v.nodes);
+  return isRecord(v) && v.normalised === true && Array.isArray(v.nodes) && Array.isArray(v.edges);
 }

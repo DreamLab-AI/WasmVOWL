@@ -20,7 +20,7 @@ modern/tests/
 ├── unit/
 │   ├── useGraphStore.test.ts   # Graph state management tests (47 tests)
 │   ├── useUIStore.test.ts      # UI state management tests (16 tests)
-│   └── useWasmSimulation.test.ts # WASM integration hook tests (10 tests)
+│   └── useWasmSimulation.test.ts # layout hook tests
 └── integration/
     └── wasm-integration.test.ts # WASM integration tests (12 tests)
 ```
@@ -71,24 +71,21 @@ modern/tests/
 3. Notification lifecycle
 4. UI state transitions
 
-### useWasmSimulation Tests (10 tests)
+### useWasmSimulation Tests
 
 **File**: `tests/unit/useWasmSimulation.test.ts`
 
-**Coverage Areas**:
-- ✅ WASM module initialization
-- ✅ Auto-start behavior
-- ✅ Control functions (start, stop, reset, step)
-- ✅ Settings synchronization
-- ✅ Graph data loading
-- ✅ Error handling
-- ✅ Cleanup on unmount
+The hook drives `@dreamlab-ai/ontomark-graph`'s real layout driver and vowl-wasm adapter (`createLayout(vowlEngine(mod))`); only the WASM module is a double (an `NggExplorer` that records what it is given), and slices run on a manual scheduler passed through the hook's options.
 
-**Key Test Cases**:
-1. Dynamic WASM import
-2. Simulation lifecycle management
-3. Frame-by-frame updates
-4. Error recovery
+**Coverage Areas**:
+- Layout settings sent before the first graph
+- Store order to layout index mapping, every edge a spring, one store update per snapshot
+- One cold load per file (also when a file reuses the previous ids, or is reopened), clear, settle
+- Live settings changes (changed keys only) and reset
+- Visible errors: load, tick, ignored settings, WASM initialisation
+- Cleanup on unmount
+
+The real engine is exercised in `tests/integration/engine.real.test.ts`: all non-empty legacy fixtures load once through the same driver, ids match the store, and the layout settles bounded with every pair at least two collision radii apart; a 12-node chain is the control.
 
 ---
 
@@ -349,7 +346,7 @@ jobs:
 - ✅ **TypeScript Unit Tests**: 73 tests
   - useGraphStore: 47 tests
   - useUIStore: 16 tests
-  - useWasmSimulation: 10 tests
+  - useWasmSimulation: see its section
 
 - ✅ **TypeScript Integration Tests**: 12 tests
   - WASM integration: 12 tests

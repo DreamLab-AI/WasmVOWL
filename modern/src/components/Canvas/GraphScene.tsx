@@ -12,7 +12,7 @@ import { LabelDeclutter } from './Camera/LabelDeclutter';
 
 export function GraphScene() {
   const { nodes, edges, filteredNodes, filteredEdges } = useGraphStore();
-  const { isRunning, alpha } = useWasmSimulation({ autoStart: true });
+  const { isRunning } = useWasmSimulation();
 
   // Filter visible elements
   const visibleNodes = Array.from(nodes.values()).filter((node) =>
@@ -58,7 +58,7 @@ export function GraphScene() {
               fontFamily: 'system-ui, sans-serif'
             }}
           >
-            Simulating... {(alpha * 100).toFixed(0)}%
+            Laying out…
           </div>
         </Html>
       )}

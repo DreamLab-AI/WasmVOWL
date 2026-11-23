@@ -3,7 +3,8 @@
  */
 
 import { create } from 'zustand';
-import type { UIState, Notification, ViewportState, GraphSettings, CameraRequest } from '../types/ui';
+import { RECOMMENDED_LAYOUT_PARAMS } from '@dreamlab-ai/ontomark-graph/layout';
+import type { UIState, Notification, ViewportState, GraphSettings, CameraRequest, LayoutSettings } from '../types/ui';
 
 interface UIStore extends UIState {
   viewport: ViewportState;
@@ -31,7 +32,18 @@ interface UIStore extends UIState {
 
   // Settings
   updateSettings: (settings: Partial<GraphSettings>) => void;
+  /** Tune layout parameters, merged over the current ones; the running layout follows live. */
+  updateLayout: (params: Partial<LayoutSettings>) => void;
   resetSettings: () => void;
+}
+
+/**
+ * The layout every NggExplorer consumer uses: the engine's own `charge` and
+ * `linkDistance` (vowl-wasm 0.4.0 defaults, stated so that a reset restores
+ * them after tuning) with ontomark-graph's readability parameters.
+ */
+function defaultLayout(): LayoutSettings {
+  return { charge: 2000, linkDistance: 60, ...RECOMMENDED_LAYOUT_PARAMS };
 }
 
 const defaultSettings: GraphSettings = {
@@ -39,10 +51,7 @@ const defaultSettings: GraphSettings = {
   showNodeDetails: true,
   nodeScale: 1.0,
   edgeWidth: 2.0,
-  linkDistance: 100,
-  chargeStrength: -300,
-  gravity: 0.1,
-  friction: 0.9,
+  layout: defaultLayout(),
   maxFPS: 60,
   lodEnabled: true,
   highContrast: false,
@@ -142,5 +151,9 @@ export const useUIStore = create<UIStore>((set) => ({
     settings: { ...state.settings, ...newSettings }
   })),
 
-  resetSettings: () => set({ settings: defaultSettings })
+  updateLayout: (params) => set((state) => ({
+    settings: { ...state.settings, layout: { ...state.settings.layout, ...params } as LayoutSettings }
+  })),
+
+  resetSettings: () => set({ settings: { ...defaultSettings, layout: defaultLayout() } })
 }));

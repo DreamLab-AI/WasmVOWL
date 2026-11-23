@@ -7,6 +7,8 @@ import { Line, Text } from '@react-three/drei';
 import * as THREE from 'three';
 import { useGraphStore } from '../../../stores/useGraphStore';
 import { useUIStore } from '../../../stores/useUIStore';
+import { useLabelStore } from '../../../stores/useLabelStore';
+import { EDGE_LABEL_FONT, EDGE_LABEL_MAX_WIDTH } from '../../../lib/nodeGeometry';
 import type { Edge } from '../../../types/graph';
 
 interface PropertyEdgeProps {
@@ -18,6 +20,7 @@ export function PropertyEdge({ edge }: PropertyEdgeProps) {
   const targetNode = useGraphStore((s) => s.nodes.get(edge.target));
   const isSelected = useGraphStore((s) => s.selectedEdge === edge.id);
   const settings = useUIStore((s) => s.settings);
+  const labelHidden = useLabelStore((s) => s.hiddenEdgeLabels.has(edge.id));
 
   // Line end points, label midpoint and arrow direction. Computed before any
   // early return so the hooks run in the same order on every render.
@@ -85,14 +88,15 @@ export function PropertyEdge({ edge }: PropertyEdgeProps) {
       />
 
       {/* Edge label */}
-      {settings.showLabels && edge.label && (
+      {/* Hidden by the declutter pass when zoomed out or overlapping. */}
+      {settings.showLabels && edge.label && (!labelHidden || isSelected) && (
         <Text
           position={midpoint}
-          fontSize={10}
+          fontSize={EDGE_LABEL_FONT}
           color="#666"
           anchorX="center"
           anchorY="middle"
-          maxWidth={200}
+          maxWidth={EDGE_LABEL_MAX_WIDTH}
           textAlign="center"
           outlineWidth={2}
           outlineColor="#ffffff"

@@ -8,6 +8,8 @@ import { Circle, Text } from '@react-three/drei';
 import * as THREE from 'three';
 import { useGraphStore } from '../../../stores/useGraphStore';
 import { useUIStore } from '../../../stores/useUIStore';
+import { useLabelStore } from '../../../stores/useLabelStore';
+import { NODE_LABEL_FONT, NODE_LABEL_OFFSET, nodeLabelMaxWidth, nodeRadius } from '../../../lib/nodeGeometry';
 import type { Node } from '../../../types/graph';
 
 interface ClassNodeProps {
@@ -22,15 +24,10 @@ export function ClassNode({ node }: ClassNodeProps) {
   const hoverNode = useGraphStore((s) => s.hoverNode);
   const isSelected = useGraphStore((s) => s.selectedNode === node.id);
   const settings = useUIStore((s) => s.settings);
+  const labelHidden = useLabelStore((s) => s.hiddenNodeLabels.has(node.id));
 
-  // Calculate node radius based on properties
   const instanceCount = node.properties?.instances || 0;
-  const baseRadius = 20;
-  const radius = instanceCount > 0
-    ? Math.sqrt(instanceCount) * 2 + baseRadius
-    : baseRadius;
-
-  const scaledRadius = radius * settings.nodeScale;
+  const scaledRadius = nodeRadius(node, settings.nodeScale);
 
   // Node colors, following the VOWL notation's fills: classes light blue,
   // datatypes and literals yellow, owl:Thing white, external classes dark blue.
@@ -111,18 +108,20 @@ export function ClassNode({ node }: ClassNodeProps) {
       </Circle>
 
       {/* Node label */}
-      {settings.showLabels && (
+      {/* Hidden by the declutter pass when it overlaps a more important
+          label or is too small to read; the selected/hovered node always shows. */}
+      {settings.showLabels && (!labelHidden || isSelected || hovered) && (
         <Text
           position={[
             node.position.x,
-            node.position.y - scaledRadius - 15,
+            node.position.y - scaledRadius - NODE_LABEL_OFFSET,
             node.position.z + 1
           ]}
-          fontSize={14}
+          fontSize={NODE_LABEL_FONT}
           color="#333"
           anchorX="center"
           anchorY="middle"
-          maxWidth={scaledRadius * 4}
+          maxWidth={nodeLabelMaxWidth(scaledRadius)}
           textAlign="center"
         >
           {node.label}

@@ -25,6 +25,15 @@ export interface ViewportState {
   mode: '2d' | '3d';
 }
 
+/**
+ * A one-shot instruction for the camera, carried out by `CameraController`
+ * inside the canvas. `seq` changes on every request, so repeating the same
+ * request (zoom in twice) is seen as two requests.
+ */
+export type CameraRequest =
+  | { kind: 'zoom'; factor: number; seq: number }
+  | { kind: 'fit'; resetDirection: boolean; seq: number };
+
 export interface GraphSettings {
   // Visual
   showLabels: boolean;

@@ -26,7 +26,7 @@ export function Sidebar() {
   const node = selectedNode ? nodes.get(selectedNode) : null;
 
   return (
-    <aside className="sidebar">
+    <aside className="sidebar" data-canvas-overlay>
       {/* Tab navigation */}
       <div className="sidebar-tabs">
         <button

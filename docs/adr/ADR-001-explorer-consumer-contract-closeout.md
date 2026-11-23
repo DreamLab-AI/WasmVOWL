@@ -242,19 +242,33 @@ Branch `feat/ngg-layout` (base `ab9122e`), part of the operator-approved converg
 | goodrelations | 536 (667), 9.4 | 0 (358), 41.67 | −254…283, −283…278 | about 40 s |
 | sioc | 33 (39), 15.0 | 0 (121), 41.99 | −154…163, −124…138 | 7.3 s |
 
+Across the whole corpus (Node, the same definitions; `overlap-node-all.json` in the evidence directory):
+
+| File | Overlapping pairs, before → after | With border, before → after |
+|---|---|---|
+| benchmark | 22 → 0 | 26 → 129 |
+| foaf | 34 → 0 | 43 → 134 |
+| goodrelations | 536 → 0 | 667 → 358 |
+| muto | 2 → 0 | 3 → 26 |
+| ontovibe | 42 → 6 | 47 → 130 |
+| personasonto | 167 → 0 | 213 → 215 |
+| sioc | 33 → 0 | 39 → 121 |
+
+ontovibe's six remaining pairs all involve its one node with instances, drawn with a radius above 20 (`nodeRadius` grows with the instance count). The collision radius is the same for every node, so the layout does not make room for it.
+
 - One engine load per file. No console errors or warnings, and no notifications. At the default camera after settling, each graph is framed in the free area.
 - Disconnected components are pulled in around the main graph (`componentGravity`). foaf's ring of isolated nodes and goodrelations' separate `Thing`/`Literal` component now sit at the edge of the main body.
 - The screenshots and measurements are kept outside the repo, in the agent session's scratch directory (`browser-evidence-wasmvowl-ngg/`).
 
 **Layout acceptance.**
 
-- **No disc overlaps: met.** All three files have zero overlapping pairs, down from 34, 536 and 33.
+- **No disc overlaps: met for uniform-size nodes.** foaf, goodrelations and sioc have zero overlapping pairs, down from 34, 536 and 33, and so do benchmark, muto and personasonto. ontovibe keeps 6 (from 42), all involving its one larger, instance-scaled node.
 - **Readable: partial.** Collision radius 21 packs nodes about 42 apart, edge to edge for WasmVOWL's 20-unit discs. The border rings touch or overlap by up to 2 units, which is why the border column rises. Layouts are also about half as wide as before (charge 2000 at link distance 60), so the default camera frames them closer. Labels now overlap neighbouring discs more often than before, and goodrelations' core is still dense.
-- **Collision radius 23** would clear the borders: zero overlapping pairs with border on all three files, minimum pair distance 45.1 to 46.0 (Node probe). It is not applied, because this change adopts the shared `RECOMMENDED_LAYOUT_PARAMS` as briefed. It is a one-line `updateLayout({ collideRadius: 23 })` or default change if WasmVOWL should diverge from the other consumers.
+- **Collision radius 23** would clear the borders of the uniform-size nodes: zero overlapping pairs with border on all three files, minimum pair distance 45.1 to 46.0 (Node probe). It is not applied, because this change adopts the shared `RECOMMENDED_LAYOUT_PARAMS` as briefed. It is a one-line `updateLayout({ collideRadius: 23 })` or default change if WasmVOWL should diverge from the other consumers.
 
 **Performance observation.** On the sidecar, goodrelations renders at about 2.7 frames per second while the layout runs, and 22 when idle. Each snapshot re-renders every node and edge, so the 6 ms tick budget per frame is a small share of each frame. This is an observation, not a benchmark. Moving the driver into a worker, or cutting the re-render cost per snapshot, is separate work.
 
 Stays open:
 
-- Label-over-disc overlap and goodrelations' density; the collision-radius choice above.
+- Label-over-disc overlap and goodrelations' density; the collision-radius choice above; instance-scaled nodes (ontovibe), which a uniform collision radius cannot space.
 - Keyboard access, search/filter/selection/export acceptance, measured performance and publisher lineage, as before.

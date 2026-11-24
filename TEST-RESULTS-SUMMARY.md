@@ -4,6 +4,13 @@
 **Tester Agent**: WebVOWL Hive Mind Tester
 **Session ID**: swarm-1762810834920-18jilvyyt
 
+> **Note, 2026-11-24:** this is the 2025-11-10 record and is kept as written.
+> Several files it lists no longer exist: `modern/tests/__mocks__/wasmMock.ts`
+> was deleted, and the `rust-wasm/` crate left this repository (layout now runs
+> on the published `@dreamlab-ai/vowl-wasm` 0.4.0 via `@dreamlab-ai/ontomark-graph`).
+> The current suite, its counts and CI are described in
+> [`modern/tests/TEST-DOCUMENTATION.md`](modern/tests/TEST-DOCUMENTATION.md).
+
 ---
 
 ## Executive Summary

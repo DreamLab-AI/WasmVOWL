@@ -2,382 +2,207 @@
 
 ## Overview
 
-Comprehensive test suite for WebVOWL Modern application covering unit tests, integration tests, and WASM module tests.
+The Vitest suite for the modern explorer in `modern/`: unit tests for the stores,
+the owl2vowl normaliser and the camera and label helpers, and integration tests
+that run the real layout engine with nothing mocked.
 
-**Test Framework**: Vitest v4.0.8
-**Test Environment**: jsdom (for React components)
-**Coverage Tool**: @vitest/coverage-v8
+**Test framework**: Vitest 4.0.8 (`vitest run`)
+**Environment**: jsdom, except `tests/integration/engine.real.test.ts`, which
+opts into `// @vitest-environment node`
+**Coverage tool**: `@vitest/coverage-v8`
+
+Layout runs on `@dreamlab-ai/vowl-wasm` 0.4.0 (`NggExplorer`) through
+`@dreamlab-ai/ontomark-graph` 0.4.0's driver and adapter,
+`createLayout(vowlEngine(mod))`. Both are pinned in `package.json` and
+`package-lock.json`. No WASM mock is used: the tests either use a recording
+`NggExplorer` double or load the real `.wasm`.
 
 ---
 
-## Test Structure
+## Test structure
 
 ```
 modern/tests/
-├── setup.ts                    # Global test setup and mocks
-├── __mocks__/
-│   └── wasmMock.ts            # WASM module mock for testing
+├── setup.ts                       # Global setup: cleanup and browser shims (DOM tests only)
 ├── unit/
-│   ├── useGraphStore.test.ts   # Graph state management tests (47 tests)
-│   ├── useUIStore.test.ts      # UI state management tests (16 tests)
-│   └── useWasmSimulation.test.ts # layout hook tests
+│   ├── useGraphStore.test.ts      # Graph store (33 tests)
+│   ├── useUIStore.test.ts         # UI store, including camera requests (26)
+│   ├── useLabelStore.test.ts      # Hidden-label store (2)
+│   ├── useWasmSimulation.test.ts  # Layout hook on the real driver, double module (16)
+│   ├── owl2vowl.test.ts           # owl2vowl / WebVOWL JSON normaliser (19)
+│   ├── cameraFit.test.ts          # Graph bounds, camera fit, zoom, insets (14)
+│   ├── labelCandidates.test.ts    # Label candidates and hidden sets (4)
+│   ├── labelDeclutter.test.ts     # Label boxes and declutter pass (9)
+│   ├── nodeGeometry.test.ts       # Node radius, label kind, framing points (3)
+│   └── TopMenuBar.test.tsx        # View buttons queue camera requests (2)
 └── integration/
-    └── wasm-integration.test.ts # WASM integration tests (12 tests)
+    ├── engine.real.test.ts        # Real vowl-wasm engine, no mocks (44 run, 2 skipped)
+    └── wasm-integration.test.ts   # Store-level ontology load, stats, filters, export (11)
 ```
+
+Last full run: 12 files, 183 passed, 2 skipped (185).
 
 ---
 
-## Unit Tests
+## Unit tests
 
-### useGraphStore Tests (47 tests)
+### Stores
 
-**File**: `tests/unit/useGraphStore.test.ts`
+- **`useGraphStore`** (`src/stores/useGraphStore.ts`): initial state, node and
+  edge operations, selection and hover, filters (node type, degree, edge type,
+  combined), ontology loading, statistics and clear.
+- **`useUIStore`** (`src/stores/useUIStore.ts`): initial state, view mode,
+  viewport, camera requests (the queue `CameraController` carries out), settings,
+  loading state, notifications, sidebar and menu state. Each test resets the
+  whole store, not only the settings.
+- **`useLabelStore`** (`src/stores/useLabelStore.ts`): nothing is hidden before
+  the first declutter pass, and unchanged content keeps the same set objects so
+  readers do not re-render.
 
-**Coverage Areas**:
-- ✅ Initial state validation
-- ✅ Node operations (add, update, remove, position updates)
-- ✅ Edge operations (add, update, remove)
-- ✅ Selection management (node/edge selection, hover states)
-- ✅ Filter operations (nodeType, degree, edgeType filters)
-- ✅ Multiple filter application
-- ✅ Ontology loading and parsing
-- ✅ Statistics calculation (node counts, edge counts, degrees)
-- ✅ Clear operations
-
-**Key Test Cases**:
-1. Node CRUD operations
-2. Edge CRUD operations
-3. Filter chaining and application
-4. Ontology data transformation
-5. Graph statistics computation
-
-### useUIStore Tests (16 tests)
-
-**File**: `tests/unit/useUIStore.test.ts`
-
-**Coverage Areas**:
-- ✅ Initial state (viewport, settings, notifications)
-- ✅ View mode toggling (2D/3D)
-- ✅ Viewport operations (zoom, rotation, target)
-- ✅ Settings management (link distance, charge strength, gravity)
-- ✅ Loading state management
-- ✅ Notification system (add, remove, types)
-- ✅ Sidebar state
-- ✅ Menu state
-
-**Key Test Cases**:
-1. Viewport transformations
-2. Settings updates and resets
-3. Notification lifecycle
-4. UI state transitions
-
-### useWasmSimulation Tests
+### `useWasmSimulation`
 
 **File**: `tests/unit/useWasmSimulation.test.ts`
 
-The hook drives `@dreamlab-ai/ontomark-graph`'s real layout driver and vowl-wasm adapter (`createLayout(vowlEngine(mod))`); only the WASM module is a double (an `NggExplorer` that records what it is given), and slices run on a manual scheduler passed through the hook's options.
+The hook drives `@dreamlab-ai/ontomark-graph`'s real layout driver and
+vowl-wasm adapter (`createLayout(vowlEngine(mod))`). Only the WASM module is a
+double: an `NggExplorer` that records what it is given. Slices run on a manual
+scheduler passed through the hook's options.
 
-**Coverage Areas**:
-- Layout settings sent before the first graph
-- Store order to layout index mapping, every edge a spring, one store update per snapshot
-- One cold load per file (also when a file reuses the previous ids, or is reopened), clear, settle
-- Live settings changes (changed keys only) and reset
-- Visible errors: load, tick, ignored settings, WASM initialisation
-- Cleanup on unmount
+Coverage:
+- layout settings sent before the first graph;
+- store order mapped to layout indices (`toLayoutGraph`, `src/lib/layoutGraph.ts`),
+  every edge a spring, one store update per snapshot;
+- one cold load per file (also when a file reuses the previous ids or is
+  reopened), clear and settle;
+- live settings changes (changed keys only) and reset;
+- visible errors: load, tick, ignored settings, WASM initialisation;
+- cleanup on unmount (the explorer is freed once).
 
-The real engine is exercised in `tests/integration/engine.real.test.ts`: all non-empty legacy fixtures load once through the same driver, ids match the store, and the layout settles bounded with every pair at least two collision radii apart; a 12-node chain is the control.
+### Normaliser and layout input
+
+- **`owl2vowl`** (`src/lib/owl2vowl.ts`): one decision per edge case, covering
+  base and attribute record merging, labels, datatype and literal ranges,
+  properties without domain or range, domain and range arrays, relation kinds,
+  what is dropped (and that it is logged), and document shape.
+- **`layoutGraph.ts`** (`toLayoutGraph`) has no file of its own. It maps the
+  normalised ontology to the driver's input (nodes in store order, every edge
+  as `source -> target`), and is checked through the hook tests above and the
+  real-engine "maps the store graph onto layout indices" case.
+
+### Camera and labels
+
+- **`cameraFit`** (`src/lib/cameraFit.ts`): `graphBounds`, `fitCamera`,
+  `zoomedDistance`, `visibleInsets`, and fitting with insets.
+- **`TopMenuBar`**: zoom in and out queue opposite camera zoom steps; fit frames
+  the graph, and reset also restores the view angle.
+- **`nodeGeometry`** (`src/lib/nodeGeometry.ts`): radius from instance count and
+  scale, class versus minor label kind, and framing of the disc and its wrapped
+  label.
+- **`labelCandidates`** (`src/lib/labelCandidates.ts`): node labels below the
+  disc and edge labels at the midpoint, filtered elements skipped, selected and
+  hovered elements pinned, round trip into hidden sets.
+- **`labelDeclutter`** (`src/lib/labelDeclutter.ts`): `pixelsPerUnit`,
+  `estimateLabelBox`, `declutterLabels` and `sameIdSet`.
 
 ---
 
-## Integration Tests
+## Integration tests
 
-### WASM Integration Tests (12 tests)
+### Real engine
+
+**File**: `tests/integration/engine.real.test.ts`
+
+Loads the pinned `@dreamlab-ai/vowl-wasm` from its own `.wasm` bytes
+(`initSync`) and lays out through the same `createLayout(vowlEngine(mod))` path
+the hook takes. Nothing is mocked, so a mapping the driver rejects fails here as
+a layout error.
+
+- The engine is vowl-wasm 0.4.0 and takes every layout setting the app sends;
+  the app defaults are `RECOMMENDED_LAYOUT_PARAMS` on the engine defaults, with
+  collision radius 23.
+- All nine legacy ontologies in `legacy/src/app/data`: hand-derived node and
+  edge counts with nothing dropped, no bare numeric labels, store-to-layout
+  index mapping, and one load that settles bounded and finite with every pair
+  at least two collision radii apart. The settle case is skipped for
+  `new_ontology.json` and `template.json`, which normalise to no nodes; these
+  are the two skipped tests.
+- The three drop-zone samples in `public/ontologies` (`foaf`, `minimal`,
+  `sioc`) load once and settle.
+- Control: a 12-node chain settles within the bound, spread, with no
+  coincident nodes.
+- Position updates do not reset the graph: `graphVersion` changes only on load
+  and clear, and a whole frame of positions is one store update.
+
+### Store integration
 
 **File**: `tests/integration/wasm-integration.test.ts`
 
-**Coverage Areas**:
-- ✅ Ontology loading (simple and complex)
-- ✅ Datatype property handling
-- ✅ Graph statistics calculation
-- ✅ Filter integration (nodeType, degree, multiple filters)
-- ✅ Data export
-- ✅ Performance benchmarks
-
-**Key Test Cases**:
-1. Simple ontology (2 classes, 1 property)
-2. Complex ontology (3 classes, 3 properties)
-3. Large ontology (100 classes, 200 properties)
-4. Filter performance (10 iterations)
-
-**Performance Expectations**:
-- Large ontology loading: < 1000ms
-- Filter operations (10x): < 500ms
+Despite its name, this file does not load WASM. It exercises `useGraphStore`
+end to end: simple, complex and datatype-property ontologies, statistics,
+filters, export, and two timing checks (a 100-class, 200-property load under
+1000 ms; ten filter passes under 500 ms).
 
 ---
 
-## Rust/WASM Tests
-
-### Location: `rust-wasm/`
-
-**Test Results**: ✅ **47 tests passed, 0 failed**
-
-**Test Execution Time**: < 1 second
-
-**Coverage Areas**:
-1. **Graph Module** (12 tests)
-   - Node and edge creation
-   - Graph operations (add, update, query)
-   - Degree calculation
-   - Metadata management
-
-2. **Layout Module** (14 tests)
-   - Force calculations (repulsion, attraction, center, damping)
-   - Simulation lifecycle
-   - Position initialization
-   - Parameter configuration
-
-3. **Ontology Module** (11 tests)
-   - OWL class parsing
-   - Property parsing (object and datatype)
-   - Validation rules
-   - Parser configuration
-
-4. **Render Module** (5 tests)
-   - SVG generation
-   - Node rendering
-   - Edge rendering
-   - Empty graph handling
-
-5. **Integration Tests** (5 tests)
-   - Full workflow testing
-   - Error handling
-   - Statistics computation
-
-**Warnings** (non-critical):
-- Unused feature flag: `console_error_panic_hook`
-- Unused variable in render module
-- Dead code in coordinate normalization
-
----
-
-## Running Tests
-
-### TypeScript/React Tests
+## Running tests
 
 ```bash
 cd modern
-
-# Run all tests
-npm test
-
-# Run in watch mode
-npm run test:watch
-
-# Run with UI
+npm ci                 # the real-engine test reads node_modules/@dreamlab-ai/vowl-wasm
+npm test               # vitest run
+npm run test:watch     # vitest (watch mode)
 npm run test:ui
-
-# Generate coverage report
 npm run test:coverage
 ```
 
-### Rust/WASM Tests
-
-```bash
-cd rust-wasm
-
-# Run unit tests
-cargo test
-
-# Run with output
-cargo test -- --nocapture
-
-# Run specific test
-cargo test test_simulation_creation
-
-# Run benchmarks
-npm run bench
-```
+There is no Rust crate in this repository any more. The layout engine is the
+published `@dreamlab-ai/vowl-wasm` package, tested in its own repository.
 
 ---
 
-## Coverage Configuration
+## Continuous integration
 
-**File**: `vitest.config.ts`
+`.github/workflows/ci.yml` runs on pushes and pull requests to `master`:
 
-**Coverage Thresholds**:
-- Lines: 80%
-- Functions: 80%
-- Branches: 75%
-- Statements: 80%
+- **modern**: `npm ci`, `npm run lint`, `npm run type-check` (`tsc -b`),
+  `npm test`, `npm run build` (Node 22);
+- **root surface**: `node --test checks/root-surface.test.mjs`.
 
-**Excluded from Coverage**:
-- `node_modules/`
-- `tests/`
-- Configuration files (`*.config.{js,ts}`)
-- Distribution files (`dist/`)
-- Type definitions (`*.d.ts`)
-- Entry point (`main.tsx`)
+Coverage is not run in CI.
 
 ---
 
-## Test Setup
+## Coverage configuration
 
-### Global Setup (`tests/setup.ts`)
+**File**: `modern/vitest.config.ts`
 
-**Mocks**:
-- WebGL context (for R3F components)
-- ResizeObserver
-- IntersectionObserver
-- matchMedia
+Thresholds (applied by `npm run test:coverage`): lines 80%, functions 80%,
+branches 75%, statements 80%. Excluded: `node_modules/`, `tests/`,
+`*.config.{js,ts}`, `dist/`, `*.d.ts`, `main.tsx`.
 
-**Cleanup**:
-- Automatic cleanup after each test via `@testing-library/react`
-
-### WASM Mock (`tests/__mocks__/wasmMock.ts`)
-
-**Functionality**:
-- Simulates WASM module behavior
-- Provides mock implementations for all WebVowl methods
-- Enables testing without actual WASM binary
+The config also sets `NODE_ENV=test`, so React's development build (and with it
+`act`) loads even in a shell that exports `NODE_ENV=production`.
 
 ---
 
-## Test Best Practices
+## Test setup (`tests/setup.ts`)
 
-### Followed Patterns:
-1. **Arrange-Act-Assert** structure
-2. **Descriptive test names** explaining what and why
-3. **Independent tests** with proper cleanup
-4. **Mock external dependencies** (WASM, WebGL)
-5. **Test edge cases** (empty graphs, invalid data)
-6. **Performance validation** for large datasets
-
-### Coverage Goals:
-- **Unit Tests**: Core logic and state management
-- **Integration Tests**: Module interactions
-- **E2E Tests**: User workflows (future enhancement)
+- `@testing-library/react` cleanup after each test, and `@testing-library/jest-dom`.
+- Browser shims, applied only where a DOM exists (not in the node-environment
+  real-engine file): canvas 2D context, `ResizeObserver`,
+  `IntersectionObserver` and `matchMedia`.
 
 ---
 
-## Known Limitations
+## Known limitations
 
-1. **React Three Fiber**: Limited component testing due to WebGL requirements
-   - Using mocks for Canvas components
-   - Testing logic hooks separately
-
-2. **WASM Module**: Testing via mock implementation
-   - Actual WASM binary tested separately in Rust
-   - Integration tested through mock
-
-3. **Performance Tests**: Synthetic benchmarks
-   - Real-world performance may vary
-   - Browser-specific optimizations not tested
+- React Three Fiber components are not rendered under WebGL; the camera and
+  label logic is tested through its pure helpers and stores.
+- The two timing checks in `wasm-integration.test.ts` are synthetic and depend on
+  the machine running them.
+- `useWasmSimulation.test.ts` prints React `act(...)` warnings to stderr; they do
+  not fail the run.
 
 ---
 
-## Future Enhancements
-
-### Planned Tests:
-1. ✨ Component visual regression tests
-2. ✨ E2E user workflow tests (Playwright)
-3. ✨ Accessibility tests (jest-axe)
-4. ✨ Cross-browser compatibility tests
-5. ✨ Load testing for large ontologies (1000+ nodes)
-
-### Planned Improvements:
-1. 🔄 Increase coverage to 90%+
-2. 🔄 Add property-based testing for graph algorithms
-3. 🔄 Implement snapshot testing for rendered output
-4. 🔄 Add mutation testing for critical paths
-
----
-
-## Continuous Integration
-
-### GitHub Actions Workflow (recommended):
-
-```yaml
-name: Tests
-
-on: [push, pull_request]
-
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - name: Install dependencies
-        run: cd modern && npm install
-      - name: Run TypeScript tests
-        run: cd modern && npm test
-      - name: Generate coverage
-        run: cd modern && npm run test:coverage
-      - name: Run Rust tests
-        run: cd rust-wasm && cargo test
-```
-
----
-
-## Troubleshooting
-
-### Common Issues:
-
-**Issue**: `vitest: command not found`
-**Solution**: Run `npm install` in modern directory
-
-**Issue**: WASM module import fails
-**Solution**: Build WASM first: `cd rust-wasm && npm run build`
-
-**Issue**: WebGL context errors
-**Solution**: Mocks are configured in `tests/setup.ts`
-
-**Issue**: Tests timeout
-**Solution**: Increase timeout in test file or vitest config
-
----
-
-## Test Results Summary
-
-### Total Tests: 85+
-
-- ✅ **TypeScript Unit Tests**: 73 tests
-  - useGraphStore: 47 tests
-  - useUIStore: 16 tests
-  - useWasmSimulation: see its section
-
-- ✅ **TypeScript Integration Tests**: 12 tests
-  - WASM integration: 12 tests
-
-- ✅ **Rust/WASM Tests**: 47 tests
-  - Graph: 12 tests
-  - Layout: 14 tests
-  - Ontology: 11 tests
-  - Render: 5 tests
-  - Integration: 5 tests
-
-### Status: ✅ All tests designed and documented
-
-**Note**: TypeScript tests require proper vitest installation. Test infrastructure is complete and ready for execution once dependencies are properly resolved.
-
----
-
-## Team Coordination
-
-Test results stored in hive memory:
-- `hive/tester/unit-tests-graph-store`
-- `hive/tester/unit-tests-ui-store`
-- `hive/tester/unit-tests-wasm-hook`
-
-Access via:
-```bash
-npx claude-flow@alpha hooks session-restore --session-id "swarm-1762810834920-18jilvyyt"
-```
-
----
-
-**Last Updated**: 2025-11-10
-**Test Suite Version**: 1.0.0
-**WebVOWL Modern Version**: 2.0.0
+**Last updated**: 2026-11-24
